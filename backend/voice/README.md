@@ -54,4 +54,4 @@ Loopback-only local prototype with allowed browser origins; no user authenticati
 
 ## Verification
 
-`npm test` verifies audio queue draining, disconnect wakeups, and buffering limits. Live AWS microphone and audio must be checked on the test page with event credentials.
+`npm test` runs nine checks covering audio queue draining, disconnect wakeups, buffering limits, PCM encoding and chunking, malformed WebSocket controls, split UTF-8 HTTP input, the request size limit, and a complete recording stream with mocked AWS clients. Live AWS microphone and audio must be checked on the test page with event credentials.
