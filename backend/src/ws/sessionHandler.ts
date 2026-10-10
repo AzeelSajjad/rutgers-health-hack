@@ -1,0 +1,168 @@
+import { ClientMessageSchema, type EncounterState, type PatientCase, type ServerMessage } from "@casecoach/shared";
+import { disclosedFactsFor } from "../engine/disclosure.js";
+import {
+  EncounterError,
+  endEncounter,
+  getActiveEncounter,
+  runTurn,
+  startEncounter,
+  type EncounterErrorCode,
+  type EngineDeps,
+} from "../engine/encounter.js";
+import { styleLabel } from "../engine/style.js";
+import type { CaptionStream, Stt } from "../speech/transcribe.js";
+
+export interface HandlerDeps extends EngineDeps {
+  stt: Stt;
+}
+
+const FRIENDLY: Record<EncounterErrorCode, string> = {
+  EMPTY_TURN: "I didn't catch a question. Please try again.",
+  TURN_TOO_LONG: "That question is too long. Please shorten it.",
+  TURN_LIMIT: "This session has reached its turn limit. Please end it and start a new one.",
+  SESSION_NOT_FOUND: "This session no longer exists. Please start a new one.",
+  SESSION_ENDED: "This session has ended. Please start a new one.",
+  CASE_NOT_FOUND: "That patient case could not be found.",
+};
+
+function sessionStarted(state: EncounterState, c: PatientCase, resumed: boolean): ServerMessage {
+  return {
+    type: "session_started",
+    sessionId: state.sessionId,
+    resumed,
+    patient: { name: c.patientName, age: c.age, visitReason: c.visitReason },
+    styleId: state.styleId,
+    styleLabel: styleLabel(c, state.styleId),
+    disclosedFacts: disclosedFactsFor(c, state.disclosedFactIds),
+    transcript: state.turns,
+  };
+}
+
+export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage) => void) {
+  let sessionId: string | null = null;
+  let busy = false;
+  let caption: CaptionStream | null = null;
+
+  const fail = (message: string) => send({ type: "error", message });
+  const failFrom = (err: unknown) => {
+    if (err instanceof EncounterError) return fail(FRIENDLY[err.code]);
+    deps.log?.("session handler error", err);
+    fail("Something went wrong. Please try again.");
+  };
+
+  const stopCaptions = () => {
+    caption?.end();
+    caption = null;
+  };
+
+  async function onMessage(raw: string): Promise<void> {
+    let data: unknown;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return fail("Invalid message");
+    }
+    const parsed = ClientMessageSchema.safeParse(data);
+    if (!parsed.success) return fail("Invalid message");
+    const msg = parsed.data;
+
+    switch (msg.type) {
+      case "start_session": {
+        if (sessionId) return fail("Session already started");
+        if (busy) return fail("Please wait");
+        busy = true;
+        try {
+          const { state, patientCase } = await startEncounter(deps, msg.caseId);
+          sessionId = state.sessionId;
+          send(sessionStarted(state, patientCase, false));
+        } catch (err) {
+          failFrom(err);
+        } finally {
+          busy = false;
+        }
+        return;
+      }
+
+      case "resume_session": {
+        if (sessionId) return fail("Session already started");
+        if (busy) return fail("Please wait");
+        busy = true;
+        try {
+          const { state, patientCase } = await getActiveEncounter(deps, msg.sessionId);
+          sessionId = state.sessionId;
+          send(sessionStarted(state, patientCase, true));
+        } catch (err) {
+          if (!(err instanceof EncounterError)) deps.log?.("resume failed", err);
+          send({ type: "error", message: "Could not resume the previous session. Starting a new one.", code: "RESUME_FAILED" });
+        } finally {
+          busy = false;
+        }
+        return;
+      }
+
+      case "student_turn": {
+        if (!sessionId) return fail("No active session");
+        if (busy) return fail("The patient is still responding");
+        busy = true;
+        send({ type: "patient_thinking" });
+        try {
+          const r = await runTurn(deps, sessionId, msg.text);
+          send({
+            type: "patient_turn",
+            studentTurn: r.studentTurn,
+            patientTurn: r.patientTurn,
+            audioBase64: r.audio ? r.audio.toString("base64") : null,
+            styleId: r.state.styleId,
+            styleLabel: styleLabel(r.patientCase, r.state.styleId),
+            disclosedFacts: disclosedFactsFor(r.patientCase, r.state.disclosedFactIds),
+          });
+        } catch (err) {
+          failFrom(err);
+        } finally {
+          busy = false;
+        }
+        return;
+      }
+
+      case "caption_start": {
+        stopCaptions();
+        const stream: CaptionStream = deps.stt.start(
+          (text, isFinal) => send({ type: "caption", text, isFinal }),
+          () => send({ type: "caption_done" }),
+          (err) => {
+            deps.log?.("speech recognition failed", err);
+            if (caption === stream) caption = null;
+            fail("Speech recognition stopped. Please try again or type your question.");
+            send({ type: "caption_done" });
+          },
+        );
+        caption = stream;
+        return;
+      }
+
+      case "caption_stop":
+        stopCaptions();
+        return;
+
+      case "end_session": {
+        if (!sessionId) return fail("No active session");
+        if (busy) return fail("The patient is still responding");
+        stopCaptions();
+        try {
+          const ended = await endEncounter(deps, sessionId);
+          sessionId = null;
+          send({ type: "session_ended", sessionId: ended.sessionId });
+        } catch (err) {
+          failFrom(err);
+        }
+        return;
+      }
+    }
+  }
+
+  return {
+    onMessage,
+    onAudio: (chunk: Buffer) => caption?.push(chunk),
+    onClose: stopCaptions,
+  };
+}
