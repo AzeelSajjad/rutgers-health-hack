@@ -59,10 +59,17 @@ teaching rules are shipped in the live browser presentation catalog.
 | Begin | `start_session` with original patient UUID as `caseId` |
 | Reconnect | `resume_session` with server-issued `sessionId` |
 | Speak | `caption_start`, binary mono 16 kHz PCM, `caption_stop` after final flush |
-| Review speech | Replace partial captions; accumulate final captions in editable draft |
+| Review speech | Collect final captions in a read-only draft; enable editing after completion |
 | Send reviewed question | `student_turn` with text; no patient replies supplied by browser |
 | Reply | `patient_turn`: commit returned turns and play `audioBase64` MP3 |
 | End | `end_session`; wait for confirmed `session_ended` |
+
+Captions remain read-only during recording and finalization in both modes, so late
+recognition results cannot overwrite student corrections. Caption completion has
+a separate timeout and capture state from patient-turn waiting. Backpressure waits
+for caption completion before another send; late speech events and unscoped speech
+errors never cancel a pending patient reply. Failed resumes preserve the question
+in a selectable read-only composer and carry it into a new encounter.
 
 Transcript turns use backend indexes for ordering and deduplication. Disconnects
 stop microphone/audio and preserve the pending question; reconnect resumes the
@@ -94,3 +101,9 @@ cover patient switching, caption review/typed replies, mode changes, end-session
 confirmation, errors, and mobile layout. A scripted transport check verifies the
 live contract independently of AWS. Real microphone permissions, live AI response
 quality, and Transcribe/Polly audio must also be tested with the actual backend.
+
+Regression coverage includes five React component tests using mocked browser
+services and two prompt integration tests against pinned snapshots of the teammate
+engine. Initial prompts exclude gated fact contents, which appear after explicit
+disclosure; those snapshots are test-only and are not bundled in the application.
+All 15 tests pass. Real microphone and AWS services still require integration checks.

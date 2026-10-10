@@ -35,6 +35,8 @@ export function App() {
   const audio = useRef<HTMLAudioElement | null>(null), audioUrl = useRef<string | null>(null);
   const clockStart = useRef<number | null>(null), pendingText = useRef(''), finals = useRef('');
   const pendingIndex = useRef<number | null>(null);
+  const captionState = useRef<'idle' | 'recording' | 'finishing'>('idle'), turnPending = useRef(false);
+  const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null), previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutedRef = useRef(muted), phaseRef = useRef(phase), sessionRef = useRef(sessionId);
   const historyBottom = useRef<HTMLDivElement | null>(null), composer = useRef<HTMLTextAreaElement | null>(null);
@@ -62,17 +64,19 @@ export function App() {
     if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
     audioUrl.current = null; audio.current = null;
   };
+  const clearCaptionWait = () => { if (captionTimer.current) clearTimeout(captionTimer.current); captionTimer.current = null; };
   const stopMic = () => {
+    captionState.current = 'idle'; clearCaptionWait();
     abortMic.current?.abort(); mic.current?.cancel(); mic.current = null;
     const r = recognition.current; recognition.current = null; if (r) { r.onend = null; r.abort(); }
     setPartial('');
   };
   const cleanup = () => {
-    generation.current++; clearWait(); if (previewTimer.current) clearTimeout(previewTimer.current);
+    generation.current++; clearWait(); turnPending.current = false; if (previewTimer.current) clearTimeout(previewTimer.current);
     stopMic(); stopAudio(); ws.current?.close(); ws.current = null;
   };
   useEffect(() => () => {
-    generation.current++; if (timer.current) clearTimeout(timer.current); if (previewTimer.current) clearTimeout(previewTimer.current);
+    generation.current++; if (captionTimer.current) clearTimeout(captionTimer.current); if (timer.current) clearTimeout(timer.current); if (previewTimer.current) clearTimeout(previewTimer.current);
     abortMic.current?.abort(); mic.current?.cancel(); recognition.current?.abort(); ws.current?.close();
     audio.current?.pause(); window.speechSynthesis?.cancel(); if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
   }, []);
@@ -88,6 +92,15 @@ export function App() {
       const socket = ws.current; ws.current = null; generation.current++; socket?.close();
       setPhase(sessionRef.current ? 'disconnected' : 'idle');
     }, milliseconds);
+  };
+  const waitForCaptions = () => {
+    if (captionState.current === 'idle') return;
+    clearCaptionWait(); captionTimer.current = setTimeout(() => {
+      stopMic(); clearWait(); stopAudio(); generation.current++; ws.current?.close(); ws.current = null;
+      if (pendingText.current) setDraft(pendingText.current);
+      setError('Captions did not finish. Your text is preserved; reconnect before continuing.');
+      setPhase(sessionRef.current ? 'disconnected' : 'idle');
+    }, 15000);
   };
   const speakPreview = (text: string) => {
     if (mutedRef.current || !window.speechSynthesis) { setPhase('ready'); return; }
@@ -111,7 +124,8 @@ export function App() {
     } catch { setPhase('ready'); setError('Patient audio was unavailable. You can read the reply.'); }
   };
   const start = (resume = false) => {
-    cleanup(); setError(''); setDraft(''); setPartial(''); setEndOpen(false);
+    const preservedDraft = pendingText.current || draft;
+    cleanup(); setError(''); setDraft(preservedDraft); setPartial(''); setEndOpen(false);
     if (!resume) { pendingText.current = ''; pendingIndex.current = null; setTurns([]); setSessionId(null); clockStart.current = null; setElapsed(0); }
     if (mode === 'preview') {
       setSessionId(`preview-${crypto.randomUUID()}`); clockStart.current = Date.now();
@@ -144,19 +158,33 @@ export function App() {
               setDraft(committed ? '' : pendingText.current); pendingText.current = ''; pendingIndex.current = null;
             }
             setPhase('ready'); break;
-          case 'patient_thinking': setPhase('thinking'); break;
+          case 'patient_thinking': if (turnPending.current) setPhase('thinking'); break;
           case 'patient_turn':
-            clearWait(); setTurns(current => appendTurns(current, [event.studentTurn, event.patientTurn])); pendingText.current = '';
+            clearWait(); turnPending.current = false; setTurns(current => appendTurns(current, [event.studentTurn, event.patientTurn])); pendingText.current = ''; pendingIndex.current = null;
             void playLiveAudio(event.audioBase64); break;
           case 'caption':
+            if (captionState.current === 'idle' || turnPending.current) break;
             if (event.isFinal) { finals.current = `${finals.current} ${event.text}`.trim(); setDraft(finals.current); setPartial(''); }
             else setPartial(event.text); break;
-          case 'caption_done': clearWait(); stopMic(); setPhase('ready'); composer.current?.focus(); break;
+          case 'caption_done':
+            if (captionState.current === 'idle' || turnPending.current) break;
+            stopMic(); setPhase('ready'); composer.current?.focus(); break;
           case 'session_ended': clearWait(); setError(''); stopMic(); stopAudio(); setPhase('ended'); setEndOpen(false); break;
           case 'error':
-            clearWait(); setError(event.message); stopMic();
-            if (event.code === 'RESUME_FAILED') { setSessionId(null); sessionRef.current = null; setPhase('idle'); }
-            else { if (event.scope === 'turn') setDraft(pendingText.current); setPhase(sessionRef.current ? 'ready' : 'idle'); }
+            setError(event.message);
+            if (event.code === 'RESUME_FAILED') {
+              clearWait(); stopMic(); turnPending.current = false;
+              if (pendingText.current) setDraft(pendingText.current);
+              generation.current++; socket.close(); ws.current = null;
+              setSessionId(null); sessionRef.current = null; setPhase('idle');
+            } else if (event.scope === 'turn') {
+              if (turnPending.current) { clearWait(); turnPending.current = false; setDraft(pendingText.current); pendingText.current = ''; pendingIndex.current = null; setPhase(sessionRef.current ? 'ready' : 'idle'); }
+            } else if (captionState.current !== 'idle') {
+              // Unscoped speech failures only end capture; never cancel a patient reply.
+              stopMic(); if (!turnPending.current) setPhase(sessionRef.current ? 'ready' : 'idle');
+            } else if (!turnPending.current && phaseRef.current === 'connecting') {
+              clearWait(); setPhase(sessionRef.current ? 'ready' : 'idle');
+            }
             break;
         }
       } catch { clearWait(); stopMic(); setError('The server sent an unexpected response. Reconnect before continuing.'); generation.current++; socket.close(); ws.current = null; setPhase(sessionRef.current ? 'disconnected' : 'idle'); }
@@ -169,8 +197,8 @@ export function App() {
     socket.onerror = () => { if (gen === generation.current) setError('Could not connect to the encounter backend. Preview mode is available while it is being integrated.'); };
   };
   const send = () => {
-    const text = draft.trim(); if (!text || phase !== 'ready' || text.length > 1000) return;
-    stopAudio(); setError(''); setDraft(''); pendingText.current = text; pendingIndex.current = (turns.at(-1)?.index ?? -1) + 1; setPhase('thinking');
+    const text = draft.trim(); if (!text || phase !== 'ready' || captionState.current !== 'idle' || turnPending.current || text.length > 1000) return;
+    stopAudio(); setError(''); setDraft(''); turnPending.current = true; pendingText.current = text; pendingIndex.current = (turns.at(-1)?.index ?? -1) + 1; setPhase('thinking');
     if (mode === 'live') {
       if (ws.current?.readyState !== WebSocket.OPEN) { setDraft(text); setPhase('disconnected'); return; }
       ws.current.send(JSON.stringify({ type: 'student_turn', text }));
@@ -181,14 +209,14 @@ export function App() {
       if (gen !== generation.current) return;
       const reply = previewReply(patient, text), at = new Date().toISOString();
       setTurns(current => [...current, { index: current.length, speaker: 'student', text, at }, { index: current.length + 1, speaker: 'patient', text: reply, at }]);
-      pendingText.current = ''; speakPreview(reply);
+      pendingText.current = ''; turnPending.current = false; speakPreview(reply);
     }, 650);
   };
   const record = async () => {
     if (phase === 'recording') {
-      setPhase('finishing');
-      if (mode === 'live') { mic.current?.finish(); waitFor('Captions did not finish. Reconnect or type your question.'); }
-      else recognition.current?.stop(); return;
+      captionState.current = 'finishing'; setPhase('finishing');
+      if (mode === 'live') { mic.current?.finish(); waitForCaptions(); }
+      else { recognition.current?.stop(); waitForCaptions(); } return;
     }
     if (phase !== 'ready') return;
     stopAudio(); setError(''); finals.current = draft; setPartial(''); setPhase(mode === 'live' ? 'connecting' : 'recording');
@@ -196,17 +224,18 @@ export function App() {
       const win = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
       const Constructor = win.SpeechRecognition || win.webkitSpeechRecognition;
       if (!Constructor) { setError('Voice preview is unavailable in this browser. Type your question, or use the live backend microphone.'); setPhase('ready'); return; }
+      captionState.current = 'recording';
       const r = new Constructor(), gen = generation.current, initialDraft = draft; recognition.current = r;
       r.lang = 'en-US'; r.interimResults = true; r.continuous = true;
       r.onresult = event => {
-        if (gen !== generation.current) return;
+        if (gen !== generation.current || captionState.current === 'idle' || recognition.current !== r) return;
         let finalText = '', partialText = '';
         for (let i = 0; i < event.results.length; i++) { const result = event.results[i]; if (result.isFinal) finalText += ` ${result[0].transcript}`; else partialText += ` ${result[0].transcript}`; }
         setDraft(`${initialDraft} ${finalText}`.trim()); setPartial(partialText.trim());
       };
-      r.onend = () => { if (gen === generation.current) { setPartial(''); setPhase('ready'); recognition.current = null; composer.current?.focus(); } };
-      r.onerror = event => { if (gen === generation.current) { setError(event.error === 'not-allowed' ? 'Microphone permission was denied. You can type instead.' : 'Voice preview stopped. Review any captions or type your question.'); setPhase('ready'); } };
-      try { r.start(); } catch { setPhase('ready'); setError('The microphone could not start. Type your question instead.'); }
+      r.onend = () => { if (gen === generation.current && recognition.current === r) { captionState.current = 'idle'; clearCaptionWait(); setPartial(''); setPhase('ready'); recognition.current = null; composer.current?.focus(); } };
+      r.onerror = event => { if (gen === generation.current && recognition.current === r) { stopMic(); setError(event.error === 'not-allowed' ? 'Microphone permission was denied. You can type instead.' : 'Voice preview stopped. Review any captions or type your question.'); setPhase('ready'); } };
+      try { r.start(); } catch { stopMic(); setPhase('ready'); setError('The microphone could not start. Type your question instead.'); }
       return;
     }
     const socket = ws.current;
@@ -218,11 +247,15 @@ export function App() {
       let ready = false;
       const capture = await captureMicrophone(chunk => {
         if (!ready || gen !== generation.current) return;
-        if (socket.bufferedAmount > 192000) { controller.abort(); socket.send(JSON.stringify({ type: 'caption_stop' })); setError('Audio connection is too slow. Type your question instead.'); setPhase('ready'); return; }
+        if (socket.bufferedAmount > 192000) {
+          ready = false; controller.abort(); captionState.current = 'finishing';
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'caption_stop' }));
+          setError('Audio connection is too slow. Finishing captions before you can edit or send.'); setPhase('finishing'); waitForCaptions(); return;
+        }
         if (socket.readyState === WebSocket.OPEN) socket.send(chunk);
       }, () => { if (gen === generation.current && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'caption_stop' })); }, controller.signal);
       if (gen !== generation.current || controller.signal.aborted) { capture.cancel(); return; }
-      mic.current = capture; socket.send(JSON.stringify({ type: 'caption_start' })); ready = true; setPhase('recording');
+      mic.current = capture; captionState.current = 'recording'; socket.send(JSON.stringify({ type: 'caption_start' })); ready = true; setPhase('recording');
     } catch { if (gen === generation.current) { setPhase('ready'); setError('The microphone could not start. Check browser permission, or type your question.'); } }
   };
   const finish = () => {
@@ -273,9 +306,9 @@ export function App() {
           <div className={`avatar-stage ${patient.key} ${phase}`}><div className="stage-grid"/><div className="stage-label"><span/>Virtual patient · Educational simulation</div><div className="portrait-halo"/><div className="avatar-position"><Avatar patient={patient} speaking={phase === 'speaking'}/></div><div className="avatar-name"><span>{patient.name.split(' ')[0]}</span><span>{patient.subtitle}</span></div><div className="stage-bottom"><div className={`connection-tag ${phase}`}><span/>{phase === 'idle' ? 'Ready to meet you' : phase === 'ended' ? 'Session ended' : phase === 'disconnected' ? 'Connection offline' : phase === 'connecting' ? 'Connecting…' : mode === 'preview' ? 'Preview conversation' : 'Connected to encounter'}</div><span>Illustrated avatar</span></div>
           {phase === 'ended' && <div className="end-overlay"><span className="complete-mark"><Check size={28}/></span><h2>A conversation worth practicing.</h2><p>{turns.filter(turn => turn.speaker === 'student').length} {turns.filter(turn => turn.speaker === 'student').length === 1 ? 'question' : 'questions'} · {formattedTime}<br/>{mode === 'preview' ? 'Preview complete. No transcript was uploaded.' : 'Encounter ended. Your backend controls transcript storage.'}</p><button className="primary-button" onClick={() => start(false)}>Practice again <ArrowRight size={17}/></button></div>}</div>
           <div className="conversation-control"><div className="status-line" role="status"><span className={`status-dot ${phase}`}/>{labels[phase]}</div>{partial && <p className="live-caption" aria-live="polite">{partial}</p>}
-            {phase === 'idle' ? <div className="start-area"><button className="primary-button" onClick={() => start()}>Begin conversation<ArrowRight size={17}/></button><span>{mode === 'preview' ? 'Try the flow with scripted replies' : 'Connect to the patient AI and voice backend'}</span></div> : phase === 'ended' ? <p className="control-hint">Choose another patient or practice this conversation again.</p> : phase === 'disconnected' ? <button className="primary-button" onClick={() => start(true)}>Reconnect to session <ArrowRight size={17}/></button> : <><div className="voice-controls"><button className="round-button" onClick={() => { stopAudio(); if (phase === 'speaking') setPhase('ready'); setMuted(!muted); }} aria-label={muted ? 'Enable patient audio' : 'Mute patient audio'}>{muted ? <VolumeX size={20}/> : <Volume2 size={20}/>}</button><div className="microphone-wrap"><button className={`microphone-button ${phase === 'recording' ? 'is-recording' : ''}`} disabled={phase !== 'ready' && phase !== 'recording'} onClick={() => void record()} aria-label={phase === 'recording' ? 'Stop recording and review captions' : 'Start microphone'}>{phase === 'recording' ? <Square size={22} fill="currentColor"/> : <Mic size={26}/>}</button><span>{phase === 'recording' ? 'Stop & review' : busy ? 'Just a moment' : 'Tap to speak'}</span></div><button className="round-button" disabled={!audioReady && phase !== 'speaking'} onClick={() => { if (phase === 'speaking') { audio.current?.pause(); window.speechSynthesis?.cancel(); setPhase('ready'); } else void audio.current?.play().catch(() => setError('Your browser could not play this audio.')); }} aria-label={phase === 'speaking' ? 'Pause patient audio' : 'Play patient reply'}>{phase === 'speaking' ? <Pause size={20}/> : <Play size={20}/>}</button></div><p className="control-hint">Your words will appear below. Review them before sending.</p></>}
+            {phase === 'idle' ? <div className="start-area"><button className="primary-button" onClick={() => start()}>Begin conversation<ArrowRight size={17}/></button><span>{mode === 'preview' ? 'Try the flow with scripted replies' : 'Connect to the patient AI and voice backend'}</span></div> : phase === 'ended' ? <p className="control-hint">Choose another patient or practice this conversation again.</p> : phase === 'disconnected' ? <button className="primary-button" onClick={() => start(true)}>Reconnect to session <ArrowRight size={17}/></button> : <><div className="voice-controls"><button className="round-button" onClick={() => { stopAudio(); if (phase === 'speaking') setPhase('ready'); setMuted(!muted); }} aria-label={muted ? 'Enable patient audio' : 'Mute patient audio'}>{muted ? <VolumeX size={20}/> : <Volume2 size={20}/>}</button><div className="microphone-wrap"><button className={`microphone-button ${phase === 'recording' ? 'is-recording' : ''}`} disabled={phase !== 'ready' && phase !== 'recording'} onClick={() => void record()} aria-label={phase === 'recording' ? 'Stop recording and review captions' : 'Start microphone'}>{phase === 'recording' ? <Square size={22} fill="currentColor"/> : <Mic size={26}/>}</button><span>{phase === 'recording' ? 'Stop & review' : busy ? 'Just a moment' : 'Tap to speak'}</span></div><button className="round-button" disabled={!audioReady && phase !== 'speaking'} onClick={() => { if (phase === 'speaking') { audio.current?.pause(); window.speechSynthesis?.cancel(); setPhase('ready'); } else void audio.current?.play().catch(() => setError('Your browser could not play this audio.')); }} aria-label={phase === 'speaking' ? 'Pause patient audio' : 'Play patient reply'}>{phase === 'speaking' ? <Pause size={20}/> : <Play size={20}/>}</button></div><p className="control-hint">{phase === 'recording' || phase === 'finishing' ? 'Captions are being collected. You can edit them when recording finishes.' : 'Review your words below before sending.'}</p></>}
             {error && <div className="error-message" role="alert">{error}<button aria-label="Dismiss message" onClick={() => setError('')}><X size={14}/></button></div>}
-            {active && <form className="composer" onSubmit={event => { event.preventDefault(); send(); }}><textarea ref={composer} aria-label="Your question" placeholder="Or type your question here…" value={draft} maxLength={1000} disabled={!canCompose && phase !== 'recording' && phase !== 'finishing'} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}/><button aria-label="Send question" type="submit" disabled={!canCompose || !draft.trim()}><Send size={18}/></button></form>}
+            {(active || draft) && <form className="composer" onSubmit={event => { event.preventDefault(); send(); }}><textarea ref={composer} aria-label="Your question" placeholder="Or type your question here…" value={draft} maxLength={1000} readOnly={!canCompose} aria-readonly={!canCompose} onChange={event => { if (canCompose) setDraft(event.target.value); }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}/><button aria-label="Send question" type="submit" disabled={!canCompose || !draft.trim()}><Send size={18}/></button></form>}
             <div className="control-footer"><span><ShieldCheck size={14}/>A space to practice, not a clinical consultation.</span>{active && <button onClick={() => setEndOpen(true)} disabled={phase !== 'ready' && phase !== 'speaking'}>End session <ArrowRight size={13}/></button>}</div>
           </div>
         </section>
