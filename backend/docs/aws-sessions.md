@@ -36,6 +36,10 @@ npm run aws:deploy
 This validates the AWS account and template and prepares a CloudFormation change
 set. Inspect it in the AWS console. Execute that change set there, or run
 `npm run aws:deploy -- --execute` to create and execute a new change set.
+A stack left in `REVIEW_IN_PROGRESS` by preparation still uses a CREATE change
+set and the create-completion waiter when rerun with `--execute`. An already
+deployed stack uses UPDATE. Preparation alone creates no table or bucket.
+
 The deployment creates billable resources and needs permission to create DynamoDB,
 S3, and a managed IAM policy. If the workshop denies an action, use the organizer's
 approved execution role; do not make the bucket public to work around permissions.
