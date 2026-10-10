@@ -19,7 +19,8 @@ export function PracticePage() {
   const [micError, setMicError] = useState<string | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  const lastSent = useRef("");
+  // The last turn handed to the socket: expectedIndex is where its student turn will sit in the saved transcript.
+  const pending = useRef<{ text: string; expectedIndex: number } | null>(null);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const startingRef = useRef(false);
@@ -49,26 +50,28 @@ export function PracticePage() {
 
   // A failed turn gives the student their question back so they can resend it.
   useEffect(() => {
-    if (view.error && view.errorScope === "turn" && lastSent.current) {
-      const text = lastSent.current;
+    if (view.error && view.errorScope === "turn" && pending.current) {
+      const { text } = pending.current;
       setDraft((d) => d || text);
-      lastSent.current = "";
+      pending.current = null;
     }
   }, [view.error, view.errorScope]);
 
   // After a reconnect, a turn lost with the old socket is missing from the resumed transcript: give it back.
-  // Declared before the transcript-length effect below so it reads lastSent before that clears it.
+  // Declared before the acknowledgement effect below so it reads the record before that clears it.
   useEffect(() => {
-    if (!view.resumes || !lastSent.current) return;
-    const text = lastSent.current;
-    const lastStudent = view.transcript.filter((t) => t.speaker === "student").at(-1);
-    if (lastStudent?.text !== text) setDraft((d) => d || text);
-    lastSent.current = "";
+    const p = pending.current;
+    if (!view.resumes || !p) return;
+    const saved = view.transcript[p.expectedIndex];
+    if (!(saved?.speaker === "student" && saved.text.trim() === p.text)) setDraft((d) => d || p.text);
+    pending.current = null;
   }, [view.resumes, view.sessionId, view.transcript]);
 
+  // The turn is acknowledged once its student turn appears at the index it was expected to take.
   useEffect(() => {
-    lastSent.current = "";
-  }, [view.transcript.length]);
+    const p = pending.current;
+    if (p && view.transcript[p.expectedIndex]?.speaker === "student") pending.current = null;
+  }, [view.transcript]);
 
   const canTalk = view.connection === "open" && view.status === "active" && !view.waiting && !speaking && !sending;
 
@@ -118,19 +121,20 @@ export function PracticePage() {
     setSending(true);
     try {
       let text = draftRef.current;
-      if (listening) {
+      // Stop only ends mic capture; Transcribe may still be finalizing, so wait for it unless the student typed.
+      if ((listening || enc.isFinalizing()) && followCaptions) {
+        if (listening) stopListening();
+        await enc.waitForCaptionsDone(1000);
+        const captioned = enc.getCaptionText();
+        if (captioned) text = captioned;
+      } else if (listening) {
         stopListening();
-        if (followCaptions) {
-          await enc.waitForCaptionsDone(1000);
-          const captioned = enc.getCaptionText();
-          if (captioned) text = captioned;
-        }
       }
       setFollowCaptions(false);
       text = text.trim();
       if (!text) return;
       if (enc.sendTurn(text)) {
-        lastSent.current = text;
+        pending.current = { text, expectedIndex: view.transcript.length };
         setDraft("");
       }
     } finally {
