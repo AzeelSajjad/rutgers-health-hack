@@ -1,0 +1,11 @@
+{
+  "profile": "REPLACE_AWS_SSO_PROFILE",
+  "region": "REPLACE_AWS_REGION",
+  "expected_account": "REPLACE_12_DIGIT_ACCOUNT_ID",
+  "stack_name": "casecoach-sessions-dev",
+  "artifact_bucket": "REPLACE_EXISTING_PRIVATE_ARTIFACT_BUCKET",
+  "jwt_issuer": "REPLACE_EXISTING_OIDC_ISSUER_URL",
+  "jwt_audience": "REPLACE_ACCESS_TOKEN_AUDIENCE",
+  "api_scope": "REPLACE_REQUIRED_ACCESS_TOKEN_SCOPE",
+  "frontend_origin": "REPLACE_HTTPS_FRONTEND_ORIGIN"
+}

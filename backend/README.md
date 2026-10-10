@@ -2,7 +2,10 @@
 
 CaseCoach's first backend feature contains exactly two predefined patients from
 `faculty-provided-sample-patient-details.csv`. Customization is future work.
-There is no HTTP server, AI conversation engine, database, or S3 download yet.
+AWS session logging and faculty review are implemented separately in
+`app/sessions.py` and `app/session_api.py`. Deployment is pending AWS/sign-in
+configuration; see `docs/aws-sessions.md`. AI conversation and voice engines are
+owned by separate integrations.
 
 Chart preparation and validation are available in `app/chart.py`. The frontend
 handoff is documented in `docs/chart-integration.md`, with TypeScript types in
@@ -31,10 +34,13 @@ been checked.
 
 ## Run
 
-Python 3.10+, no third-party packages. From `backend/`:
+The profile/chart modules use Python 3.10+ without third-party packages. The AWS
+modules require Boto3; AWS tests require the development dependencies. From `backend/`:
 
 ```sh
-python3 -m unittest discover -s tests -v
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m unittest discover -s tests -v
 python3 -c 'from app.profiles import list_patient_cards; import json; print(json.dumps(list_patient_cards(), indent=2))'
 ```
 
