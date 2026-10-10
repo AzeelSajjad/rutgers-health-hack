@@ -97,3 +97,27 @@ test('CSV parsing preserves quotes, BOM, multiline fields and detects missing/du
     assert.equal(importProfiles(path, join(directory, 'output')).length, 2);
   } finally { rmSync(directory, { recursive: true }); }
 });
+
+const enumFields = [
+  { name: 'avatar type', valid: 's3_reference', target: (p: ReturnType<typeof loadPatientProfile>) => p.identity.avatar, key: 'type' },
+  { name: 'source kind', valid: 'provided_csv', target: (p: ReturnType<typeof loadPatientProfile>) => p.sources[0], key: 'kind' },
+  { name: 'fact visibility', valid: 'initial', target: (p: ReturnType<typeof loadPatientProfile>) => p.facts[0], key: 'visibility' },
+  { name: 'clinical review status', valid: 'not_reviewed', target: (p: ReturnType<typeof loadPatientProfile>) => p.provenance, key: 'clinical_review_status' },
+];
+for (const field of enumFields) {
+  test(`${field.name} rejects arrays and other non-string enum inputs`, () => {
+    for (const value of [[field.valid], null, 1, true, {}]) {
+      const profile = loadPatientProfile(WYATT);
+      Object.assign(field.target(profile), { [field.key]: value });
+      assert.throws(() => validateProfile(profile), ProfileValidationError);
+    }
+  });
+}
+test('S3 avatars require a valid URI even when their enum value is valid', () => {
+  for (const uri of [undefined, '', 'https://example.com/avatar.png', 's3://bucket', 's3:///image.png']) {
+    const profile = loadPatientProfile(WYATT);
+    if (uri === undefined) delete profile.identity.avatar.uri;
+    else profile.identity.avatar.uri = uri;
+    assert.throws(() => validateProfile(profile), ProfileValidationError);
+  }
+});
