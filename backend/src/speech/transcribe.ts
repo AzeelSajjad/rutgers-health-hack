@@ -4,35 +4,70 @@ export type CaptionHandler = (text: string, isFinal: boolean) => void;
 
 export interface CaptionStream {
   push(chunk: Buffer): void;
+  /** Graceful: Transcribe gets the buffered audio, then the stream finishes (final caption, onDone). */
   end(): void;
+  /** Hard stop: drops buffered audio and aborts the request. Reports onDone, not onError. */
+  cancel(): void;
 }
 
 export interface Stt {
   start(onCaption: CaptionHandler, onDone: () => void, onError: (err: unknown) => void): CaptionStream;
 }
 
-/** Async-iterable buffer that bridges WebSocket audio frames to the Transcribe input stream. */
+/** Not-yet-consumed audio a stream may hold: 10 s of 16 kHz Int16 mono. */
+export const MAX_BUFFERED_BYTES = 320_000;
+/** Total audio one caption stream may receive: 120 s of 16 kHz Int16 mono. */
+export const MAX_STREAM_BYTES = 120 * 32_000;
+
+/** Async-iterable, bounded buffer that bridges WebSocket audio frames to the Transcribe input stream. */
 export class ChunkQueue implements AsyncIterable<Buffer> {
   private readonly chunks: Buffer[] = [];
   private readonly waiters: ((r: IteratorResult<Buffer>) => void)[] = [];
+  private readonly maxBufferedBytes: number;
+  private buffered = 0;
   private done = false;
 
-  push(chunk: Buffer): void {
-    if (this.done) return;
-    const waiter = this.waiters.shift();
-    if (waiter) waiter({ value: chunk, done: false });
-    else this.chunks.push(chunk);
+  constructor(opts: { maxBufferedBytes?: number } = {}) {
+    this.maxBufferedBytes = opts.maxBufferedBytes ?? MAX_BUFFERED_BYTES;
   }
 
+  /** Bytes pushed but not yet consumed. */
+  get bufferedBytes(): number {
+    return this.buffered;
+  }
+
+  /** Returns false, without buffering, when the queue is closed or the chunk would exceed the buffer cap. */
+  push(chunk: Buffer): boolean {
+    if (this.done) return false;
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter({ value: chunk, done: false });
+      return true;
+    }
+    if (this.buffered + chunk.length > this.maxBufferedBytes) return false;
+    this.chunks.push(chunk);
+    this.buffered += chunk.length;
+    return true;
+  }
+
+  /** Graceful: buffered chunks are still yielded, then iteration stops. */
   end(): void {
     this.done = true;
     for (const waiter of this.waiters.splice(0)) waiter({ value: undefined, done: true });
+  }
+
+  /** Hard stop: drops buffered chunks; nothing more is yielded. */
+  cancel(): void {
+    this.chunks.length = 0;
+    this.buffered = 0;
+    this.end();
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<Buffer> {
     while (true) {
       const next = this.chunks.shift();
       if (next) {
+        this.buffered -= next.length;
         yield next;
         continue;
       }
@@ -44,16 +79,21 @@ export class ChunkQueue implements AsyncIterable<Buffer> {
   }
 }
 
-export class TranscribeStt implements Stt {
-  private readonly client: TranscribeStreamingClient;
+type TranscribeClient = Pick<TranscribeStreamingClient, "send">;
 
-  constructor(region: string) {
-    this.client = new TranscribeStreamingClient({ region });
+export class TranscribeStt implements Stt {
+  private readonly client: TranscribeClient;
+
+  constructor(region: string, client?: TranscribeClient) {
+    this.client = client ?? new TranscribeStreamingClient({ region });
   }
 
   start(onCaption: CaptionHandler, onDone: () => void, onError: (err: unknown) => void): CaptionStream {
     const queue = new ChunkQueue();
+    const controller = new AbortController();
     let stopped = false;
+    let settled = false;
+    let total = 0;
     // A throwing callback must never surface as an unhandled rejection (it would crash the process).
     const safe =
       <A extends unknown[]>(fn: (...args: A) => void) =>
@@ -65,25 +105,51 @@ export class TranscribeStt implements Stt {
         }
       };
     const caption = safe(onCaption);
-    const done = safe(onDone);
-    const error = safe(onError);
-    this.run(queue, caption)
+    // onDone / onError fire at most once between them.
+    const once =
+      <A extends unknown[]>(fn: (...args: A) => void) =>
+      (...args: A) => {
+        if (settled) return;
+        settled = true;
+        fn(...args);
+      };
+    const done = once(safe(onDone));
+    const error = once(safe(onError));
+
+    const cancel = () => {
+      stopped = true;
+      queue.cancel();
+      controller.abort();
+    };
+    const failWith = (message: string) => {
+      cancel();
+      error(new Error(message));
+    };
+
+    this.run(queue, caption, controller.signal)
       .then(done, (err) => {
-        queue.end();
+        queue.cancel();
+        // A stream we stopped ourselves (including the abort from cancel()) is a normal finish.
         if (stopped) done();
         else error(err);
       })
       .catch(() => {});
     return {
-      push: (chunk) => queue.push(chunk),
+      push: (chunk) => {
+        if (stopped) return;
+        total += chunk.length;
+        if (total > MAX_STREAM_BYTES) return failWith("caption stream limit reached");
+        if (!queue.push(chunk)) failWith("caption buffer full");
+      },
       end: () => {
         stopped = true;
         queue.end();
       },
+      cancel,
     };
   }
 
-  private async run(queue: ChunkQueue, onCaption: CaptionHandler): Promise<void> {
+  private async run(queue: ChunkQueue, onCaption: CaptionHandler, abortSignal: AbortSignal): Promise<void> {
     async function* audioStream() {
       for await (const chunk of queue) yield { AudioEvent: { AudioChunk: chunk } };
     }
@@ -94,6 +160,7 @@ export class TranscribeStt implements Stt {
         MediaSampleRateHertz: 16000,
         AudioStream: audioStream(),
       }),
+      { abortSignal },
     );
     if (!res.TranscriptResultStream) return;
     for await (const event of res.TranscriptResultStream) {

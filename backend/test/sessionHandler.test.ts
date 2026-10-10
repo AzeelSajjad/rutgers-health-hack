@@ -30,7 +30,7 @@ const json = (m: unknown) => JSON.stringify(m);
 function queueTurn(llm: FakeLlm) {
   llm.queueJson("analyze_turn", { requestedFactIds: ["b"], exploredFactIds: [], cues: [] });
   llm.texts.push("I take a pill twice a day.");
-  llm.queueJson("validate_reply", { ok: true, problems: [] });
+  llm.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
 }
 
 describe("session handler", () => {
@@ -112,6 +112,20 @@ describe("session handler", () => {
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
     await handler.onMessage(json({ type: "student_turn", text: "   " }));
     expect(sent.at(-1)).toEqual({ type: "error", message: "I didn't catch a question. Please try again.", scope: "turn" });
+  });
+
+  it("maps SESSION_FULL to a friendly turn-scoped message", async () => {
+    const { handler, sent, llm, deps } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    const state = (await deps.sessions.get("s1"))!;
+    await deps.sessions.save({ ...state, turns: [{ index: 0, speaker: "student", text: "x".repeat(349_900), at: "t" }] });
+    queueTurn(llm);
+    await handler.onMessage(json({ type: "student_turn", text: "What do you take?" }));
+    expect(sent.at(-1)).toEqual({
+      type: "error",
+      message: "This session is full. Please end it and start a new one.",
+      scope: "turn",
+    });
   });
 
   it("an engine failure on student_turn is turn-scoped; other errors are not", async () => {
@@ -268,9 +282,10 @@ describe("session handler", () => {
       await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
       await handler.onMessage(json({ type: "caption_start" }));
       vi.advanceTimersByTime(119_999);
-      expect(stt.starts[0].ended).toBe(0);
+      expect(stt.starts[0].cancelled).toBe(0);
       vi.advanceTimersByTime(1);
-      expect(stt.starts[0].ended).toBe(1);
+      expect(stt.starts[0].cancelled).toBe(1);
+      expect(stt.starts[0].ended).toBe(0);
       handler.onAudio(Buffer.from([1]));
       expect(stt.pushed).toHaveLength(0);
 
@@ -278,6 +293,7 @@ describe("session handler", () => {
       await handler.onMessage(json({ type: "caption_stop" }));
       vi.advanceTimersByTime(120_000);
       expect(stt.starts[1].ended).toBe(1);
+      expect(stt.starts[1].cancelled).toBe(0);
     } finally {
       vi.useRealTimers();
     }
@@ -295,6 +311,32 @@ describe("session handler", () => {
     await handler.onMessage(json({ type: "caption_start" }));
     await handler.onMessage(json({ type: "end_session" }));
     expect(sent.at(-1)).toEqual({ type: "session_ended", sessionId: "s1" });
-    expect(stt.ended).toBe(1);
+    expect(stt.cancelled).toBe(1);
+    expect(stt.ended).toBe(0);
+  });
+
+  it("caption_stop ends the stream gracefully (end, not cancel) so the final caption still arrives", async () => {
+    const { handler, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    await handler.onMessage(json({ type: "caption_stop" }));
+    expect(stt.starts[0]).toMatchObject({ ended: 1, cancelled: 0 });
+  });
+
+  it("a replacing caption_start cancels the previous stream", async () => {
+    const { handler, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    expect(stt.starts[0]).toMatchObject({ ended: 0, cancelled: 1 });
+    expect(stt.starts[1]).toMatchObject({ ended: 0, cancelled: 0 });
+  });
+
+  it("onClose cancels the open caption stream", async () => {
+    const { handler, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    handler.onClose();
+    expect(stt.starts[0]).toMatchObject({ ended: 0, cancelled: 1 });
   });
 });

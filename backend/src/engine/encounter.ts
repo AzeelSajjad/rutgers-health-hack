@@ -15,7 +15,8 @@ export type EncounterErrorCode =
   | "SESSION_ENDED"
   | "EMPTY_TURN"
   | "TURN_TOO_LONG"
-  | "TURN_LIMIT";
+  | "TURN_LIMIT"
+  | "SESSION_FULL";
 
 export class EncounterError extends Error {
   constructor(public readonly code: EncounterErrorCode) {
@@ -24,6 +25,10 @@ export class EncounterError extends Error {
 }
 
 export const MAX_TURN_CHARS = 1000;
+/** UTF-8 cap on one student turn, so multi-byte text can't blow the session item size. */
+export const MAX_TURN_BYTES = 2_000;
+/** Serialized session budget, kept under DynamoDB's 400 KiB item limit with headroom. */
+export const MAX_SESSION_BYTES = 350_000;
 export const MAX_STUDENT_TURNS = 60;
 
 export interface EngineDeps {
@@ -78,7 +83,9 @@ export async function getActiveEncounter(deps: EngineDeps, sessionId: string) {
 export async function runTurn(deps: EngineDeps, sessionId: string, rawText: string): Promise<TurnResult> {
   const text = rawText.trim();
   if (!text) throw new EncounterError("EMPTY_TURN");
-  if (text.length > MAX_TURN_CHARS) throw new EncounterError("TURN_TOO_LONG");
+  if (text.length > MAX_TURN_CHARS || Buffer.byteLength(text, "utf8") > MAX_TURN_BYTES) {
+    throw new EncounterError("TURN_TOO_LONG");
+  }
 
   const { state, patientCase } = await getActiveEncounter(deps, sessionId);
   if (state.turns.filter((t) => t.speaker === "student").length >= MAX_STUDENT_TURNS) {
@@ -135,6 +142,8 @@ export async function runTurn(deps: EngineDeps, sessionId: string, rawText: stri
     disclosedFactIds: committedDisclosed,
     turns: [...state.turns, studentTurn, patientTurn],
   };
+  // Don't persist a turn that would push the session item past the budget; the stored state stays as it was.
+  if (Buffer.byteLength(JSON.stringify(next), "utf8") > MAX_SESSION_BYTES) throw new EncounterError("SESSION_FULL");
   await deps.sessions.save(next);
   return { studentTurn, patientTurn, audio, state: next, patientCase };
 }
