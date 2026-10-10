@@ -26,6 +26,9 @@ const FRIENDLY: Record<EncounterErrorCode, string> = {
   CASE_NOT_FOUND: "That patient case could not be found.",
 };
 
+/** Hard cap on one caption stream so a client can't hold a Transcribe stream open indefinitely. */
+export const MAX_CAPTION_MS = 120_000;
+
 const RESUME_GONE = new Set<EncounterErrorCode>(["SESSION_NOT_FOUND", "SESSION_ENDED", "CASE_NOT_FOUND"]);
 
 function sessionStarted(state: EncounterState, c: PatientCase, resumed: boolean): ServerMessage {
@@ -47,6 +50,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
   let caption: CaptionStream | null = null;
   // Bumped on every caption_start so callbacks from a replaced stream become no-ops.
   let captionGen = 0;
+  let captionTimer: ReturnType<typeof setTimeout> | undefined;
 
   const fail = (message: string, scope?: "turn") =>
     send(scope ? { type: "error", message, scope } : { type: "error", message });
@@ -57,6 +61,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
   };
 
   const stopCaptions = () => {
+    clearTimeout(captionTimer);
+    captionTimer = undefined;
     caption?.end();
     caption = null;
   };
@@ -140,6 +146,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
       }
 
       case "caption_start": {
+        if (!sessionId) return fail("No active session");
         stopCaptions();
         const gen = ++captionGen;
         let finished = false;
@@ -164,6 +171,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
             },
           );
           caption = stream;
+          captionTimer = setTimeout(stopCaptions, MAX_CAPTION_MS);
         } catch (err) {
           failFrom(err);
         }

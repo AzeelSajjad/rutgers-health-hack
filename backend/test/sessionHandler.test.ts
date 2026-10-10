@@ -197,6 +197,8 @@ describe("session handler", () => {
 
   it("forwards audio to the caption stream, captions to the client, and caption_done", async () => {
     const { handler, sent, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    sent.length = 0;
     await handler.onMessage(json({ type: "caption_start" }));
     handler.onAudio(Buffer.from([1, 2]));
     stt.starts[0].onCaption("what brings", false);
@@ -250,6 +252,35 @@ describe("session handler", () => {
     await expect(handler.onMessage(json({ type: "caption_start" }))).resolves.toBeUndefined();
     expect(sent).toEqual([{ type: "error", message: "Something went wrong. Please try again." }]);
     expect(() => handler.onAudio(Buffer.from([1]))).not.toThrow();
+  });
+
+  it("caption_start before start_session is rejected without opening a stream", async () => {
+    const { handler, sent, stt } = setup();
+    await handler.onMessage(json({ type: "caption_start" }));
+    expect(sent).toEqual([{ type: "error", message: "No active session" }]);
+    expect(stt.starts).toHaveLength(0);
+  });
+
+  it("auto-stops a caption stream after 120 s, and caption_stop cancels the timer", async () => {
+    vi.useFakeTimers();
+    try {
+      const { handler, stt } = setup();
+      await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+      await handler.onMessage(json({ type: "caption_start" }));
+      vi.advanceTimersByTime(119_999);
+      expect(stt.starts[0].ended).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(stt.starts[0].ended).toBe(1);
+      handler.onAudio(Buffer.from([1]));
+      expect(stt.pushed).toHaveLength(0);
+
+      await handler.onMessage(json({ type: "caption_start" }));
+      await handler.onMessage(json({ type: "caption_stop" }));
+      vi.advanceTimersByTime(120_000);
+      expect(stt.starts[1].ended).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("audio before caption_start is ignored", () => {
