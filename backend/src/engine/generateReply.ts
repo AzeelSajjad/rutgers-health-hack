@@ -1,7 +1,7 @@
 import type { ValidationOutcome } from "@casecoach/shared";
 import type { Llm } from "../llm/llm.js";
 import { buildPatientMessages, buildPatientSystemPrompt } from "./patientPrompt.js";
-import { precheckReply } from "./precheck.js";
+import { precheckReply, redactProblems } from "./precheck.js";
 import { validateReply, type ReplyInput } from "./validateReply.js";
 
 export type { ReplyInput } from "./validateReply.js";
@@ -55,14 +55,16 @@ export async function generateValidatedReply(
     }
     const pre = precheckReply(input, text);
     if (pre.length) {
-      problems = pre;
+      problems = redactProblems(input, pre);
       continue;
     }
     // Start speech synthesis while the validator runs; discarded if validation fails.
     const audio = deps.speak(text);
     const verdict = await validateReply(deps.validator, input, text);
     if (verdict.ok) return { text, validation: attempt === 1 ? "passed" : "regenerated", problems: [], audio };
-    problems = verdict.problems.length ? verdict.problems : ["The reviewer rejected the reply."];
+    audio.catch(() => {}); // audio for a rejected draft is discarded; keep a misbehaving speak from going unhandled
+    const reasons = verdict.problems.length ? verdict.problems : ["The reviewer rejected the reply."];
+    problems = redactProblems(input, reasons);
   }
 
   const text = fallbackReply(input.turns.length);

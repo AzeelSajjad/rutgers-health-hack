@@ -38,7 +38,7 @@ describe("generateValidatedReply", () => {
   });
 
   it("regenerates once with the validator's problems", async () => {
-    const { fake, deps } = setup();
+    const { fake, deps, spoken } = setup();
     fake.texts.push("I'd rather not say why.", "It's... hard to say.");
     fake.queueJson("validate_reply", { ok: false, problems: ["Breaks character"] });
     fake.queueJson("validate_reply", { ok: true, problems: [] });
@@ -46,6 +46,8 @@ describe("generateValidatedReply", () => {
     expect(r.validation).toBe("regenerated");
     expect(r.text).toBe("It's... hard to say.");
     expect(fake.textCalls[1].system).toContain("Breaks character");
+    expect(spoken).toEqual(["I'd rather not say why.", "It's... hard to say."]);
+    expect((await r.audio)?.toString()).toBe("mp3:It's... hard to say.");
   });
 
   it("regenerates on precheck problems without calling the validator", async () => {
@@ -69,27 +71,56 @@ describe("generateValidatedReply", () => {
   });
 
   it("treats a reply that is empty after sanitizing as a failure", async () => {
-    const { fake, deps } = setup();
+    const { fake, deps, spoken } = setup();
     fake.texts.push("*nods*", "Yes, sometimes.");
     fake.queueJson("validate_reply", { ok: true, problems: [] });
     const r = await generateValidatedReply(deps, input);
     expect(r.validation).toBe("regenerated");
+    expect(fake.jsonCalls.filter((c) => c.purpose === "validate_reply")).toHaveLength(1);
+    expect(spoken).toEqual(["Yes, sometimes."]);
   });
 
   it("gives the validator identity, locked facts, negatives and recent conversation", async () => {
     const { fake, deps } = setup();
     fake.texts.push("Not really.");
     fake.queueJson("validate_reply", { ok: true, problems: [] });
-    await generateValidatedReply(deps, {
-      ...input,
-      turns: [{ index: 0, speaker: "student", text: "Earlier question", at: "t" }],
-    });
+    const turns = ["alpha-first-turn", "beta-second-turn", "t2", "t3", "t4", "t5", "t6", "gamma-last-turn"].map(
+      (text, index) => ({ index, speaker: "student" as const, text, at: "t" }),
+    );
+    await generateValidatedReply(deps, { ...input, turns });
     const v = fake.jsonCalls.find((c) => c.purpose === "validate_reply")!;
     expect(v.user).toContain("Alex Test");
     expect(v.user).toContain("Skips the evening dose when working late.");
     expect(v.user).toContain("No chest pain");
-    expect(v.user).toContain("Earlier question");
+    expect(v.user).toContain("mayMinimize");
+    expect(v.user).toContain("Here for a follow-up.");
+    expect(v.user).toContain(input.studentText);
     expect(v.user).toContain("Not really.");
+    expect(v.user).not.toContain("alpha-first-turn");
+    expect(v.user).not.toContain("beta-second-turn");
+    expect(v.user).toContain("gamma-last-turn");
+  });
+
+  it("feeds a precheck problem into the regeneration prompt", async () => {
+    const { fake, deps, spoken } = setup();
+    fake.texts.push("I take 250 of them.", "Mm, I'm not sure.");
+    fake.queueJson("validate_reply", { ok: true, problems: [] });
+    const r = await generateValidatedReply(deps, input);
+    expect(r.validation).toBe("regenerated");
+    expect(fake.textCalls[1].system).toContain("250");
+    expect(fake.jsonCalls.filter((c) => c.purpose === "validate_reply")).toHaveLength(1);
+    expect(spoken).toEqual(["Mm, I'm not sure."]);
+  });
+
+  it("never sends locked fact content from validator problems to the patient prompt", async () => {
+    const { fake, deps } = setup();
+    fake.texts.push("I'd rather not say.", "Mm, not really.");
+    fake.queueJson("validate_reply", { ok: false, problems: ["Says she skips the evening dose when working late"] });
+    fake.queueJson("validate_reply", { ok: true, problems: [] });
+    const r = await generateValidatedReply(deps, input);
+    expect(r.validation).toBe("regenerated");
+    expect(fake.textCalls[1].system).not.toContain("evening dose");
+    expect(fake.textCalls[1].system).toContain("routine barrier");
   });
 
   it("rotates fallback lines by turn count", () => {
