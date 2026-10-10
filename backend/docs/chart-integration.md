@@ -1,19 +1,18 @@
 # Chart integration contract v1
 
 Use `chart-contract.ts` for the frontend response types and `examples/` for JSON
-fixtures. These represent the implemented Python projection, not deployed HTTP
+fixtures. These represent the implemented TypeScript projection, not deployed HTTP
 endpoints. No voice, question classification, session storage, or UI is included.
 
 ## Backend handoff
 
-```python
-from app.profiles import load_patient_profile
-from app.chart import build_chart_response
+```typescript
+import { loadPatientProfile, buildChartResponse } from '../app/index.js';
 
-profile = load_patient_profile("4d619156-3250-4212-8399-129f3280fab1")
-initial_chart = build_chart_response(profile)
-# After the encounter service authorizes/discloses a fact in its session state:
-updated_chart = build_chart_response(profile, released_fact_ids=["constipation"])
+const profile = loadPatientProfile("4d619156-3250-4212-8399-129f3280fab1");
+const initialChart = buildChartResponse(profile);
+// After the encounter service authorizes/discloses a fact in its session state:
+const updatedChart = buildChartResponse(profile, ["constipation"]);
 ```
 
 Use the session's pinned profile version. The function includes initial items plus
@@ -21,7 +20,7 @@ the explicitly released facts. Repeated ids do not duplicate items; unknown ids
 raise `ChartValidationError`. An authorized fact that has no chart metadata is
 valid but adds no chart item. Each call is a projection, not saved session state.
 
-`prepare_chart_items(profile)` returns the full validated server-only catalog,
+`prepareChartItems(profile)` returns the full validated server-only catalog,
 including `visibility` and `topics`. Do not expose it to the frontend. The encounter
 service must own authorization and released ids; never accept them directly from
 a student's request body. It must pass the accumulated released ids on every call.
@@ -81,4 +80,4 @@ supported measurement shapes, finite numeric values, and explicit units/nulls.
 The chart derives its values directly from those facts so a second clinical value
 store cannot drift from the profile. Structural validation is not clinical review.
 
-Run from `backend/`: `python3 -m unittest discover -s tests -v`.
+Run from `backend/`: `npm run typecheck && npm test && npm run build`.

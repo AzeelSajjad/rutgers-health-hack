@@ -1,7 +1,8 @@
-__pycache__/
-*.py[cod]
-.venv/
+node_modules/
+dist/
 work/
 infrastructure/deployment.local.json
 .env
 .env.*
+.venv/
+__pycache__/

@@ -2,12 +2,10 @@
 
 CaseCoach's first backend feature contains exactly two predefined patients from
 `faculty-provided-sample-patient-details.csv`. Customization is future work.
-AWS session logging and faculty review are implemented separately in
-`app/sessions.py` and `app/session_api.py`. Deployment is pending AWS/sign-in
-configuration; see `docs/aws-sessions.md`. AI conversation and voice engines are
-owned by separate integrations.
+The profile library provides no HTTP server or AI conversation engine. Demo AWS
+session storage is available separately; see the session storage section below.
 
-Chart preparation and validation are available in `app/chart.py`. The frontend
+Chart preparation and validation are available in `app/chart.ts`. The frontend
 handoff is documented in `docs/chart-integration.md`, with TypeScript types in
 `docs/chart-contract.ts` and initial/post-disclosure JSON fixtures in `docs/examples/`.
 Chart values are projected from profile facts rather than maintained separately.
@@ -34,48 +32,49 @@ been checked.
 
 ## Run
 
-The profile/chart modules use Python 3.10+ without third-party packages. The AWS
-modules require Boto3; AWS tests require the development dependencies. From `backend/`:
+Node.js 22+ and npm. From `backend/`:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python -m unittest discover -s tests -v
-python3 -c 'from app.profiles import list_patient_cards; import json; print(json.dumps(list_patient_cards(), indent=2))'
+npm ci
+npm run typecheck
+npm test
+npm run build
+node --input-type=module -e 'import { listPatientCards } from "./dist/app/index.js"; console.log(JSON.stringify(listPatientCards(), null, 2))'
 ```
 
-Rebuild the two JSON profiles from the supplied CSV:
+Rebuild the two JSON profiles from the supplied CSV using the bundled reviewed
+case mappings and authored simulation rules:
 
 ```sh
-python3 scripts/import_sample_profiles.py '/path/to/faculty-provided-sample-patient-details.csv'
+npm run import:profiles -- '/path/to/faculty-provided-sample-patient-details.csv'
 ```
 
 The importer selects only Wyatt and Yvette, rejects missing/duplicate selected
 rows, and preserves their original records. Its fact mappings apply to these
-specific source notes; changed notes require a mapping review rather than silently
+specific source notes; changed notes or personality require a mapping review rather than silently
 using old clinical values. `--output-directory` can target a scratch directory.
 The original CSV is not required at runtime; each JSON contains its source row.
 
 ## Backend functions
 
-- `list_patient_cards()`: summaries for the student library.
-- `get_patient_card(profile_id)`: one summary; missing ids raise `KeyError`.
-- `load_patient_profile(profile_id)`: full server-only case. Never return it
+- `listPatientCards()`: summaries for the student library.
+- `getPatientCard(profileId)`: one summary; missing ids raise `PatientNotFoundError`.
+- `loadPatientProfile(profileId)`: full server-only case. Never return it
   directly to a student client: it includes unreleased facts and teaching rules.
-- `validate_profile(profile)`: structural validation, not clinical approval.
+- `validateProfile(profile)`: structural validation, not clinical approval.
 
 For example:
 
-```python
-from app.profiles import load_patient_profile
+```typescript
+import { loadPatientProfile } from './app/index.js';
 
-wyatt = load_patient_profile("4d619156-3250-4212-8399-129f3280fab1")
-yvette = load_patient_profile("6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8")
+const wyatt = loadPatientProfile("4d619156-3250-4212-8399-129f3280fab1");
+const yvette = loadPatientProfile("6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8");
 ```
 
 The catalog finds `data/profiles/*.json` relative to the module, independently of
 the working directory. Each read returns fresh data. Future API handlers can map
-`KeyError` to 404. Future encounters should pin the profile id/version and enforce
+`PatientNotFoundError` to 404. Future encounters should pin the profile id/version and enforce
 disclosure server-side: metadata alone does not release facts or generate responses.
 
 ## Source versus simulation choices
@@ -98,3 +97,10 @@ The encounter contract remains data-driven: identity/avatar, behavior, clinical
 facts, unknowns, conversation rules, sources, and objectives are separate fields.
 Later customization can derive a new versioned case without overwriting these
 defaults. Validation, persistence, and creation routes will be separate work.
+
+## Demo session storage
+
+TypeScript helpers in `app/sessions.ts` connect the existing backend to one DynamoDB
+table and one private S3 bucket. Setup, teammate integration, and a short demo
+explanation are in `docs/aws-sessions.md`. Run `npm run aws:check` to check your local
+AWS login. Authentication and HTTP routes remain in the existing backend.

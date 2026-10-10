@@ -1,44 +1,13 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "CaseCoach private encounter logs and faculty review; existing OIDC sign-in required",
-  "Parameters": {
-    "JwtIssuer": {
-      "Type": "String",
-      "AllowedPattern": "https://.+",
-      "Description": "Existing RSA OIDC issuer, matching access token iss exactly"
-    },
-    "JwtAudience": {
-      "Type": "String",
-      "MinLength": 1,
-      "Description": "Existing access-token API audience/client id"
-    },
-    "ApiScope": {
-      "Type": "String",
-      "MinLength": 1,
-      "Description": "Required access-token scope, supplied by sign-in owner"
-    },
-    "FrontendOrigin": {
-      "Type": "String",
-      "AllowedPattern": "https://[^/]+",
-      "Description": "One exact HTTPS frontend origin; no wildcard"
-    },
-    "ArtifactBucket": {
-      "Type": "String",
-      "MinLength": 3,
-      "Description": "Existing private deployment bucket in this region"
-    },
-    "ArtifactKey": {
-      "Type": "String",
-      "MinLength": 1,
-      "Description": "Uploaded Lambda ZIP key"
-    }
-  },
+  "Description": "CaseCoach demo: session table and private transcript bucket",
   "Resources": {
     "SessionsTable": {
       "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
       "Properties": {
         "BillingMode": "PAY_PER_REQUEST",
-        "DeletionProtectionEnabled": true,
         "AttributeDefinitions": [
           {
             "AttributeName": "pk",
@@ -67,6 +36,9 @@
             "KeyType": "RANGE"
           }
         ],
+        "SSESpecification": {
+          "SSEEnabled": true
+        },
         "GlobalSecondaryIndexes": [
           {
             "IndexName": "SessionList",
@@ -91,24 +63,17 @@
                 "revision",
                 "turn_count",
                 "created_at",
-                "updated_at",
-                "review_status"
+                "updated_at"
               ]
             }
           }
-        ],
-        "SSESpecification": {
-          "SSEEnabled": true
-        },
-        "PointInTimeRecoverySpecification": {
-          "PointInTimeRecoveryEnabled": true
-        }
-      },
-      "DeletionPolicy": "Retain",
-      "UpdateReplacePolicy": "Retain"
+        ]
+      }
     },
     "TranscriptBucket": {
       "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
       "Properties": {
         "PublicAccessBlockConfiguration": {
           "BlockPublicAcls": true,
@@ -123,9 +88,6 @@
             }
           ]
         },
-        "VersioningConfiguration": {
-          "Status": "Enabled"
-        },
         "BucketEncryption": {
           "ServerSideEncryptionConfiguration": [
             {
@@ -134,10 +96,11 @@
               }
             }
           ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
         }
-      },
-      "DeletionPolicy": "Retain",
-      "UpdateReplacePolicy": "Retain"
+      }
     },
     "TranscriptBucketPolicy": {
       "Type": "AWS::S3::BucketPolicy",
@@ -149,7 +112,7 @@
           "Version": "2012-10-17",
           "Statement": [
             {
-              "Sid": "DenyInsecureTransport",
+              "Sid": "RequireHTTPS",
               "Effect": "Deny",
               "Principal": "*",
               "Action": "s3:*",
@@ -169,541 +132,56 @@
                   "aws:SecureTransport": "false"
                 }
               }
-            },
-            {
-              "Sid": "RequireEncryptedUploads",
-              "Effect": "Deny",
-              "Principal": "*",
-              "Action": "s3:PutObject",
-              "Resource": {
-                "Fn::Sub": "${TranscriptBucket.Arn}/*"
-              },
-              "Condition": {
-                "StringNotEquals": {
-                  "s3:x-amz-server-side-encryption": "AES256"
-                }
-              }
-            },
-            {
-              "Sid": "LimitSignedDownloadAge",
-              "Effect": "Deny",
-              "Principal": "*",
-              "Action": [
-                "s3:GetObject",
-                "s3:GetObjectVersion"
-              ],
-              "Resource": {
-                "Fn::Sub": "${TranscriptBucket.Arn}/*"
-              },
-              "Condition": {
-                "NumericGreaterThan": {
-                  "s3:signatureAge": "60000"
-                }
-              }
             }
           ]
         }
       }
     },
-    "FunctionLogs": {
-      "Type": "AWS::Logs::LogGroup",
+    "BackendStoragePolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
       "Properties": {
-        "LogGroupName": {
-          "Fn::Sub": "/aws/lambda/${AWS::StackName}-sessions"
-        },
-        "RetentionInDays": 30
-      }
-    },
-    "ApiLogs": {
-      "Type": "AWS::Logs::LogGroup",
-      "Properties": {
-        "RetentionInDays": 30
-      }
-    },
-    "SessionRole": {
-      "Type": "AWS::IAM::Role",
-      "Properties": {
-        "AssumeRolePolicyDocument": {
+        "Description": "Attach to the existing CaseCoach backend execution role",
+        "PolicyDocument": {
           "Version": "2012-10-17",
           "Statement": [
             {
               "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com"
-              },
-              "Action": "sts:AssumeRole"
-            }
-          ]
-        },
-        "Policies": [
-          {
-            "PolicyName": "SessionStorage",
-            "PolicyDocument": {
-              "Version": "2012-10-17",
-              "Statement": [
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:Query",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
                 {
-                  "Effect": "Allow",
-                  "Action": [
-                    "dynamodb:GetItem"
-                  ],
-                  "Resource": {
-                    "Fn::GetAtt": [
-                      "SessionsTable",
-                      "Arn"
-                    ]
-                  }
-                },
-                {
-                  "Effect": "Allow",
-                  "Action": [
-                    "dynamodb:Query"
-                  ],
-                  "Resource": [
-                    {
-                      "Fn::GetAtt": [
-                        "SessionsTable",
-                        "Arn"
-                      ]
-                    },
-                    {
-                      "Fn::Sub": "${SessionsTable.Arn}/index/SessionList"
-                    }
+                  "Fn::GetAtt": [
+                    "SessionsTable",
+                    "Arn"
                   ]
                 },
                 {
-                  "Effect": "Allow",
-                  "Action": [
-                    "dynamodb:PutItem",
-                    "dynamodb:UpdateItem"
-                  ],
-                  "Resource": {
-                    "Fn::GetAtt": [
-                      "SessionsTable",
-                      "Arn"
-                    ]
-                  },
-                  "Condition": {
-                    "ForAllValues:StringLike": {
-                      "dynamodb:LeadingKeys": [
-                        "SESSION#*",
-                        "APP_AUDIT"
-                      ]
-                    }
-                  }
-                },
-                {
-                  "Effect": "Allow",
-                  "Action": [
-                    "s3:PutObject",
-                    "s3:GetObject",
-                    "s3:GetObjectVersion"
-                  ],
-                  "Resource": {
-                    "Fn::Sub": "${TranscriptBucket.Arn}/sessions/*"
-                  }
-                },
-                {
-                  "Effect": "Allow",
-                  "Action": [
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                  ],
-                  "Resource": {
-                    "Fn::GetAtt": [
-                      "FunctionLogs",
-                      "Arn"
-                    ]
-                  }
+                  "Fn::Sub": "${SessionsTable.Arn}/index/SessionList"
                 }
               ]
-            }
-          }
-        ]
-      }
-    },
-    "SessionsFunction": {
-      "Type": "AWS::Lambda::Function",
-      "Properties": {
-        "FunctionName": {
-          "Fn::Sub": "${AWS::StackName}-sessions"
-        },
-        "Runtime": "python3.12",
-        "Handler": "app.session_api.handler",
-        "Role": {
-          "Fn::GetAtt": [
-            "SessionRole",
-            "Arn"
-          ]
-        },
-        "MemorySize": 512,
-        "Timeout": 28,
-        "Code": {
-          "S3Bucket": {
-            "Ref": "ArtifactBucket"
-          },
-          "S3Key": {
-            "Ref": "ArtifactKey"
-          }
-        },
-        "Environment": {
-          "Variables": {
-            "SESSIONS_TABLE": {
-              "Ref": "SessionsTable"
             },
-            "TRANSCRIPTS_BUCKET": {
-              "Ref": "TranscriptBucket"
-            }
-          }
-        }
-      }
-    },
-    "SessionApi": {
-      "Type": "AWS::ApiGatewayV2::Api",
-      "Properties": {
-        "Name": {
-          "Fn::Sub": "${AWS::StackName}-api"
-        },
-        "ProtocolType": "HTTP",
-        "CorsConfiguration": {
-          "AllowOrigins": [
             {
-              "Ref": "FrontendOrigin"
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:GetObjectVersion"
+              ],
+              "Resource": {
+                "Fn::Sub": "${TranscriptBucket.Arn}/sessions/*"
+              }
             }
-          ],
-          "AllowMethods": [
-            "GET",
-            "POST"
-          ],
-          "AllowHeaders": [
-            "authorization",
-            "content-type"
-          ],
-          "MaxAge": 300
-        }
-      }
-    },
-    "JwtAuthorizer": {
-      "Type": "AWS::ApiGatewayV2::Authorizer",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "AuthorizerType": "JWT",
-        "IdentitySource": [
-          "$request.header.Authorization"
-        ],
-        "Name": "ExistingSignIn",
-        "JwtConfiguration": {
-          "Issuer": {
-            "Ref": "JwtIssuer"
-          },
-          "Audience": [
-            {
-              "Ref": "JwtAudience"
-            }
-          ]
-        }
-      }
-    },
-    "LambdaIntegration": {
-      "Type": "AWS::ApiGatewayV2::Integration",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "IntegrationType": "AWS_PROXY",
-        "IntegrationUri": {
-          "Fn::GetAtt": [
-            "SessionsFunction",
-            "Arn"
-          ]
-        },
-        "PayloadFormatVersion": "2.0",
-        "TimeoutInMillis": 29000
-      }
-    },
-    "ApiStage": {
-      "Type": "AWS::ApiGatewayV2::Stage",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "StageName": "$default",
-        "AutoDeploy": true,
-        "DefaultRouteSettings": {
-          "ThrottlingBurstLimit": 20,
-          "ThrottlingRateLimit": 10
-        },
-        "AccessLogSettings": {
-          "DestinationArn": {
-            "Fn::GetAtt": [
-              "ApiLogs",
-              "Arn"
-            ]
-          },
-          "Format": "{\"requestId\":\"$context.requestId\",\"routeKey\":\"$context.routeKey\",\"status\":\"$context.status\"}"
-        }
-      }
-    },
-    "GatewayInvokePermission": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Ref": "SessionsFunction"
-        },
-        "Principal": "apigateway.amazonaws.com",
-        "SourceAccount": {
-          "Ref": "AWS::AccountId"
-        },
-        "SourceArn": {
-          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${SessionApi}/*/*"
-        }
-      }
-    },
-    "Route0": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "POST /sessions",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route1": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "GET /sessions/{session_id}",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route2": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "GET /sessions/{session_id}/messages",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route3": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "POST /sessions/{session_id}/finish",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route4": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "GET /faculty/sessions",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route5": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "GET /faculty/sessions/{session_id}/archive",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route6": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "POST /faculty/sessions/{session_id}/reviews",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
-          ]
-        }
-      }
-    },
-    "Route7": {
-      "Type": "AWS::ApiGatewayV2::Route",
-      "Properties": {
-        "ApiId": {
-          "Ref": "SessionApi"
-        },
-        "RouteKey": "GET /faculty/sessions/{session_id}/reviews",
-        "AuthorizationType": "JWT",
-        "AuthorizerId": {
-          "Ref": "JwtAuthorizer"
-        },
-        "AuthorizationScopes": [
-          {
-            "Ref": "ApiScope"
-          }
-        ],
-        "Target": {
-          "Fn::Join": [
-            "/",
-            [
-              "integrations",
-              {
-                "Ref": "LambdaIntegration"
-              }
-            ]
           ]
         }
       }
     }
   },
   "Outputs": {
-    "ApiUrl": {
-      "Value": {
-        "Fn::GetAtt": [
-          "SessionApi",
-          "ApiEndpoint"
-        ]
-      }
-    },
-    "SessionsTableName": {
+    "SessionTableName": {
       "Value": {
         "Ref": "SessionsTable"
       }
@@ -711,6 +189,11 @@
     "TranscriptBucketName": {
       "Value": {
         "Ref": "TranscriptBucket"
+      }
+    },
+    "BackendStoragePolicyArn": {
+      "Value": {
+        "Ref": "BackendStoragePolicy"
       }
     }
   }

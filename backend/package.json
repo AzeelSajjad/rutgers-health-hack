@@ -1,0 +1,31 @@
+{
+  "name": "casecoach-patient-profiles",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "import:profiles": "tsx scripts/import-sample-profiles.ts",
+    "aws:check": "tsx scripts/check-aws.ts",
+    "aws:deploy": "tsx scripts/deploy-sessions.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1149.0",
+    "@aws-sdk/client-dynamodb": "^3.1149.0",
+    "@aws-sdk/client-s3": "^3.1149.0",
+    "@aws-sdk/client-sts": "^3.1149.0",
+    "@aws-sdk/credential-providers": "^3.1149.0",
+    "@aws-sdk/lib-dynamodb": "^3.1149.0",
+    "csv-parse": "^7.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
