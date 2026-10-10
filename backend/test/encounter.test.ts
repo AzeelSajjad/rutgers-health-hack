@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { PatientCase, Turn } from "@casecoach/shared";
 import {
   EncounterError,
+  MAX_SESSION_BYTES,
   MAX_STUDENT_TURNS,
   endEncounter,
   getActiveEncounter,
@@ -134,6 +135,46 @@ describe("runTurn", () => {
     const { deps } = setup();
     await startEncounter(deps, "test-case");
     await expect(runTurn(deps, "session-1", "a".repeat(1001))).rejects.toMatchObject({ code: "TURN_TOO_LONG" });
+  });
+
+  it("rejects 1,000 CJK characters (3,000 UTF-8 bytes) as TURN_TOO_LONG without calling the LLM", async () => {
+    const { deps, llm } = setup();
+    await startEncounter(deps, "test-case");
+    const text = "薬".repeat(1000);
+    expect(text.length).toBe(1000);
+    expect(Buffer.byteLength(text, "utf8")).toBe(3000);
+    await expect(runTurn(deps, "session-1", text)).rejects.toMatchObject({ code: "TURN_TOO_LONG" });
+    expect(llm.jsonCalls).toHaveLength(0);
+    expect(llm.textCalls).toHaveLength(0);
+  });
+
+  it("never speaks or saves a patient draft over 600 characters", async () => {
+    const { deps, llm, tts, sessions } = setup();
+    await startEncounter(deps, "test-case");
+    const long = "Well I just do not really know. ".repeat(22).trim();
+    expect(long.length).toBeGreaterThan(600);
+    llm.queueJson("analyze_turn", { requestedFactIds: [], exploredFactIds: [], cues: [] });
+    llm.texts.push(long, long);
+    const r = await runTurn(deps, "session-1", "How are things?");
+    expect(r.patientTurn.validation).toBe("fallback");
+    expect(r.patientTurn.text).not.toBe(long);
+    expect(tts.calls.map((c) => c.text)).not.toContain(long);
+    expect(llm.jsonCalls.filter((c) => c.purpose === "validate_reply")).toHaveLength(0);
+    expect((await sessions.get("session-1"))!.turns.map((t) => t.text)).not.toContain(long);
+  });
+
+  it("throws SESSION_FULL instead of saving a session over the item budget, leaving the stored state unchanged", async () => {
+    const { deps, llm, sessions } = setup();
+    const { state } = await startEncounter(deps, "test-case");
+    const bytes = (s: unknown) => Buffer.byteLength(JSON.stringify(s), "utf8");
+    const filler = (len: number): Turn => ({ index: 0, speaker: "student", text: "x".repeat(len), at: "t" });
+    const base = bytes({ ...state, turns: [filler(0)] });
+    const nearFull = { ...state, turns: [filler(MAX_SESSION_BYTES - 200 - base)] };
+    expect(bytes(nearFull)).toBe(MAX_SESSION_BYTES - 200);
+    await sessions.save(nearFull);
+    queueHappyTurn(llm);
+    await expect(runTurn(deps, "session-1", "What medicines do you take?")).rejects.toMatchObject({ code: "SESSION_FULL" });
+    expect(await sessions.get("session-1")).toEqual(nearFull);
   });
 
   it(`rejects turns past ${MAX_STUDENT_TURNS} student turns`, async () => {

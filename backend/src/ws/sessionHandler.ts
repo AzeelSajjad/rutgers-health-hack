@@ -24,6 +24,7 @@ const FRIENDLY: Record<EncounterErrorCode, string> = {
   SESSION_NOT_FOUND: "This session no longer exists. Please start a new one.",
   SESSION_ENDED: "This session has ended. Please start a new one.",
   CASE_NOT_FOUND: "That patient case could not be found.",
+  SESSION_FULL: "This session is full. Please end it and start a new one.",
 };
 
 /** Hard cap on one caption stream so a client can't hold a Transcribe stream open indefinitely. */

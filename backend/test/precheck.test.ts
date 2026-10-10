@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { precheckReply } from "../src/engine/precheck.js";
+import { MAX_PATIENT_REPLY_CHARS, precheckReply } from "../src/engine/precheck.js";
 import { makeCase } from "./fixtures.js";
 
 const input = { patientCase: makeCase(), styleId: "concerned", disclosedFactIds: ["a"], turns: [], studentText: "q" };
@@ -22,5 +22,11 @@ describe("precheckReply", () => {
   it("allows numbers from shareable facts and the patient's age", () => {
     const withMeds = { ...input, disclosedFactIds: ["a", "b"] };
     expect(precheckReply(withMeds, "I'm 45 and take 500 mg.")).toEqual([]);
+  });
+
+  it("flags a reply over MAX_PATIENT_REPLY_CHARS as too_long", () => {
+    expect(MAX_PATIENT_REPLY_CHARS).toBe(600);
+    expect(precheckReply(input, "a".repeat(600))).toEqual([]);
+    expect(precheckReply(input, "a".repeat(601))).toEqual([{ kind: "too_long" }]);
   });
 });

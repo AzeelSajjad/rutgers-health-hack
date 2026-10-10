@@ -185,6 +185,19 @@ describe("generateValidatedReply", () => {
     expect(retry).toContain(GENERIC);
   });
 
+  it("regenerates a draft over 600 characters with the too_long template, without calling the validator", async () => {
+    const { fake, deps, spoken } = setup();
+    const long = "a".repeat(700);
+    fake.texts.push(long, "Mm, I'm not sure.");
+    fake.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
+    const r = await generateValidatedReply(deps, input);
+    expect(r.validation).toBe("regenerated");
+    expect(r.text).toBe("Mm, I'm not sure.");
+    expect(fake.textCalls[1].system).toContain("Keep the reply to one to three short sentences.");
+    expect(fake.jsonCalls.filter((c) => c.purpose === "validate_reply")).toHaveLength(1);
+    expect(spoken).toEqual(["Mm, I'm not sure."]);
+  });
+
   it("rotates fallback lines by turn count", () => {
     expect(fallbackReply(0)).not.toBe(fallbackReply(1));
   });

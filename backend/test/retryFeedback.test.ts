@@ -41,4 +41,10 @@ describe("renderRetryFeedback", () => {
       "Do not state any symptom, medication, dose, number, test result or history that is not in your facts.",
     ]);
   });
+
+  it("renders too_long from its template", () => {
+    expect(renderRetryFeedback(c, [], [], [{ kind: "too_long" }])).toEqual([
+      "Keep the reply to one to three short sentences.",
+    ]);
+  });
 });

@@ -14,6 +14,7 @@ const TEMPLATES: Record<Exclude<IssueCode, "leaks_locked_fact">, string> = {
 };
 
 const LEAK_UNKNOWN = "Do not reveal or hint at anything you have not opened up about yet.";
+const TOO_LONG = "Keep the reply to one to three short sentences.";
 const GENERIC = "Your previous draft broke one of the rules above. Write a new reply that follows every rule.";
 
 export function renderRetryFeedback(
@@ -32,6 +33,7 @@ export function renderRetryFeedback(
       codes.add("invents_detail");
     }
   }
+  const tooLong = precheck.some((p) => p.kind === "too_long");
 
   const lines: string[] = [];
   for (const code of ISSUE_CODES) {
@@ -45,5 +47,6 @@ export function renderRetryFeedback(
       lines.push(TEMPLATES[code]);
     }
   }
+  if (tooLong) lines.push(TOO_LONG);
   return lines.length ? lines : [GENERIC];
 }

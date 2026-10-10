@@ -114,6 +114,20 @@ describe("session handler", () => {
     expect(sent.at(-1)).toEqual({ type: "error", message: "I didn't catch a question. Please try again.", scope: "turn" });
   });
 
+  it("maps SESSION_FULL to a friendly turn-scoped message", async () => {
+    const { handler, sent, llm, deps } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    const state = (await deps.sessions.get("s1"))!;
+    await deps.sessions.save({ ...state, turns: [{ index: 0, speaker: "student", text: "x".repeat(349_900), at: "t" }] });
+    queueTurn(llm);
+    await handler.onMessage(json({ type: "student_turn", text: "What do you take?" }));
+    expect(sent.at(-1)).toEqual({
+      type: "error",
+      message: "This session is full. Please end it and start a new one.",
+      scope: "turn",
+    });
+  });
+
   it("an engine failure on student_turn is turn-scoped; other errors are not", async () => {
     const { handler, sent, llm } = setup();
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));

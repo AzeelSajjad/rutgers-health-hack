@@ -1,6 +1,8 @@
 import type { ReplyInput } from "./validateReply.js";
 
 export const LEAK_NGRAM = 4;
+/** Longest patient reply that may be spoken or saved; longer drafts are regenerated, then fall back. */
+export const MAX_PATIENT_REPLY_CHARS = 600;
 
 const normalize = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -23,13 +25,17 @@ const lockedFacts = (input: ReplyInput) => {
   return input.patientCase.facts.filter((f) => !disclosed.has(f.id));
 };
 
-export type PrecheckIssue = { kind: "locked_wording"; factId: string } | { kind: "stray_number" };
+export type PrecheckIssue =
+  | { kind: "locked_wording"; factId: string }
+  | { kind: "stray_number" }
+  | { kind: "too_long" };
 
 /** Cheap deterministic checks that run before the LLM validator. Returns structured issues; empty means pass. */
 export function precheckReply(input: ReplyInput, reply: string): PrecheckIssue[] {
   const c = input.patientCase;
   const disclosed = new Set(input.disclosedFactIds);
   const issues: PrecheckIssue[] = [];
+  if (reply.length > MAX_PATIENT_REPLY_CHARS) issues.push({ kind: "too_long" });
 
   const paddedReply = padded(reply);
   for (const f of lockedFacts(input)) {
