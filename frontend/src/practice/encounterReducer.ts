@@ -15,6 +15,8 @@ export interface EncounterView {
   waiting: boolean;
   pendingAudio: string | null;
   error: string | null;
+  /** "turn" when the last error answered a student_turn (the page then restores the question). */
+  errorScope: "turn" | null;
 }
 
 export type EncounterAction =
@@ -39,6 +41,7 @@ export const initialEncounterView: EncounterView = {
   waiting: false,
   pendingAudio: null,
   error: null,
+  errorScope: null,
 };
 
 export function encounterReducer(s: EncounterView, a: EncounterAction): EncounterView {
@@ -62,9 +65,10 @@ export function encounterReducer(s: EncounterView, a: EncounterAction): Encounte
         disclosedFacts: a.disclosedFacts,
         newFactIds: [],
         error: null,
+        errorScope: null,
       };
     case "turn_sent":
-      return { ...s, waiting: true, error: null };
+      return { ...s, waiting: true, error: null, errorScope: null };
     case "patient_thinking":
       return { ...s, waiting: true };
     case "patient_turn":
@@ -83,6 +87,8 @@ export function encounterReducer(s: EncounterView, a: EncounterAction): Encounte
     case "session_ended":
       return { ...s, status: "ended", waiting: false };
     case "error":
-      return { ...s, waiting: false, error: a.message };
+      // Only a turn error ends the wait: a speech or resume error can arrive while a turn is still in flight.
+      if (a.scope === "turn") return { ...s, waiting: false, error: a.message, errorScope: "turn" };
+      return { ...s, error: a.message, errorScope: null };
   }
 }

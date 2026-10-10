@@ -74,4 +74,5 @@ export type ServerMessage =
       disclosedFacts: DisclosedFact[];
     }
   | { type: "session_ended"; sessionId: string }
-  | { type: "error"; message: string; code?: "RESUME_FAILED" };
+  /** scope "turn": the error answers a student_turn, so the client stops waiting and restores the question. */
+  | { type: "error"; message: string; code?: "RESUME_FAILED"; scope?: "turn" };

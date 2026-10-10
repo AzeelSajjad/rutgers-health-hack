@@ -63,8 +63,12 @@ describe("encounterReducer", () => {
     expect(s.previousStyleLabel).toBeNull();
   });
 
-  it("an error clears waiting", () => {
-    expect(encounterReducer({ ...started, waiting: true }, { type: "error", message: "boom" })).toMatchObject({ waiting: false, error: "boom" });
+  it("a turn-scoped error clears waiting and records its scope", () => {
+    expect(encounterReducer({ ...started, waiting: true }, { type: "error", message: "boom", scope: "turn" })).toMatchObject({ waiting: false, error: "boom", errorScope: "turn" });
+  });
+
+  it("an error without turn scope keeps waiting but still shows the message", () => {
+    expect(encounterReducer({ ...started, waiting: true }, { type: "error", message: "speech" })).toMatchObject({ waiting: true, error: "speech", errorScope: null });
   });
 
   it("disconnected clears waiting and marks the connection closed", () => {

@@ -49,12 +49,12 @@ export function PracticePage() {
 
   // A failed turn gives the student their question back so they can resend it.
   useEffect(() => {
-    if (view.error && lastSent.current) {
+    if (view.error && view.errorScope === "turn" && lastSent.current) {
       const text = lastSent.current;
       setDraft((d) => d || text);
       lastSent.current = "";
     }
-  }, [view.error]);
+  }, [view.error, view.errorScope]);
 
   // After a reconnect, a turn lost with the old socket is missing from the resumed transcript: give it back.
   // Declared before the transcript-length effect below so it reads lastSent before that clears it.

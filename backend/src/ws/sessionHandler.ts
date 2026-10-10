@@ -46,11 +46,12 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
   // Bumped on every caption_start so callbacks from a replaced stream become no-ops.
   let captionGen = 0;
 
-  const fail = (message: string) => send({ type: "error", message });
-  const failFrom = (err: unknown) => {
-    if (err instanceof EncounterError) return fail(FRIENDLY[err.code]);
+  const fail = (message: string, scope?: "turn") =>
+    send(scope ? { type: "error", message, scope } : { type: "error", message });
+  const failFrom = (err: unknown, scope?: "turn") => {
+    if (err instanceof EncounterError) return fail(FRIENDLY[err.code], scope);
     deps.log?.("session handler error", err);
-    fail("Something went wrong. Please try again.");
+    fail("Something went wrong. Please try again.", scope);
   };
 
   const stopCaptions = () => {
@@ -106,8 +107,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
       }
 
       case "student_turn": {
-        if (!sessionId) return fail("No active session");
-        if (busy) return fail("The patient is still responding");
+        if (!sessionId) return fail("No active session", "turn");
+        if (busy) return fail("The patient is still responding", "turn");
         busy = true;
         send({ type: "patient_thinking" });
         try {
@@ -123,7 +124,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
             disclosedFacts: disclosedFactsFor(r.patientCase, r.state.disclosedFactIds),
           });
         } catch (err) {
-          failFrom(err);
+          failFrom(err, "turn");
         } finally {
           busy = false;
         }

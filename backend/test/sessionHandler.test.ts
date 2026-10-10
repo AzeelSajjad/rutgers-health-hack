@@ -49,7 +49,7 @@ describe("session handler", () => {
   it("student_turn before start_session yields an error", async () => {
     const { handler, sent } = setup();
     await handler.onMessage(json({ type: "student_turn", text: "Hi" }));
-    expect(sent[0]).toEqual({ type: "error", message: "No active session" });
+    expect(sent[0]).toEqual({ type: "error", message: "No active session", scope: "turn" });
   });
 
   it("start_session returns the patient summary, style, atStart facts and an empty transcript", async () => {
@@ -88,7 +88,7 @@ describe("session handler", () => {
     const second = handler.onMessage(json({ type: "student_turn", text: "Two" }));
     await Promise.all([first, second]);
     expect(sent.filter((m) => m.type === "patient_turn")).toHaveLength(1);
-    expect(sent).toContainEqual({ type: "error", message: "The patient is still responding" });
+    expect(sent).toContainEqual({ type: "error", message: "The patient is still responding", scope: "turn" });
   });
 
   it.each([
@@ -111,7 +111,17 @@ describe("session handler", () => {
     const { handler, sent } = setup();
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
     await handler.onMessage(json({ type: "student_turn", text: "   " }));
-    expect(sent.at(-1)).toEqual({ type: "error", message: "I didn't catch a question. Please try again." });
+    expect(sent.at(-1)).toEqual({ type: "error", message: "I didn't catch a question. Please try again.", scope: "turn" });
+  });
+
+  it("an engine failure on student_turn is turn-scoped; other errors are not", async () => {
+    const { handler, sent, llm } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    llm.failOn = "analyze_turn";
+    await handler.onMessage(json({ type: "student_turn", text: "Hello?" }));
+    expect(sent.at(-1)).toEqual({ type: "error", message: "Something went wrong. Please try again.", scope: "turn" });
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    expect(sent.at(-1)).toEqual({ type: "error", message: "Session already started" });
   });
 
   it("resume_session on a new connection restores the transcript", async () => {
