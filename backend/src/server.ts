@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { WebSocketServer, type RawData } from "ws";
+import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { ServerMessage } from "@casecoach/shared";
 import { config } from "./config.js";
 import { createDeps } from "./deps.js";
@@ -17,9 +17,18 @@ const wss = new WebSocketServer({
   verifyClient: ({ origin }: { origin: string }) => allowedOrigins.has(origin),
 });
 
-// Keeps idle connections alive through proxies and load balancers (e.g. ALB's 60 s idle timeout).
+// Standard ws heartbeat: pings keep idle connections alive through proxies and load balancers
+// (e.g. ALB's 60 s idle timeout), and a socket that missed the previous pong is dead and gets terminated.
+const alive = new WeakMap<WebSocket, boolean>();
 const heartbeat = setInterval(() => {
-  for (const ws of wss.clients) if (ws.readyState === ws.OPEN) ws.ping();
+  for (const ws of wss.clients) {
+    if (alive.get(ws) === false) {
+      ws.terminate();
+      continue;
+    }
+    alive.set(ws, false);
+    ws.ping();
+  }
 }, 25_000);
 wss.on("close", () => clearInterval(heartbeat));
 
@@ -27,6 +36,8 @@ const toBuffer = (data: RawData): Buffer =>
   Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data);
 
 wss.on("connection", (ws) => {
+  alive.set(ws, true);
+  ws.on("pong", () => alive.set(ws, true));
   const handler = createSessionHandler(deps, (m: ServerMessage) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m));
   });
