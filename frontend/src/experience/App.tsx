@@ -14,13 +14,14 @@ interface Recognition {
   start(): void; stop(): void; abort(): void;
 }
 const labels: Record<Phase, string> = { idle: 'Ready when you are', connecting: 'Connecting to your patient…', ready: 'Your patient is listening', recording: 'Listening to you…', finishing: 'Finishing your captions…', thinking: 'Your patient is thinking…', speaking: 'Your patient is speaking', disconnected: 'Connection interrupted', ended: 'Conversation complete' };
-const socketUrl = import.meta.env.VITE_ENCOUNTER_WS_URL || 'ws://localhost:3001/ws';
+const socketUrl = import.meta.env.VITE_ENCOUNTER_WS_URL || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 
-export function App() {
+interface ExperienceProps { accountName?: string; previewOnly?: boolean; onExit?: () => void }
+export function App({ accountName = 'CaseCoach learner', previewOnly = false, onExit }: ExperienceProps = {}) {
   const [view, setView] = useState<'overview' | 'cases' | 'encounter'>('cases');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [patient, setPatient] = useState(patients[0]);
-  const [mode, setMode] = useState<'preview' | 'live'>('preview');
+  const [mode, setMode] = useState<'preview' | 'live'>(previewOnly ? 'preview' : 'live');
   const [phase, setPhase] = useState<Phase>('idle');
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [draft, setDraft] = useState(''), [partial, setPartial] = useState('');
@@ -35,6 +36,8 @@ export function App() {
   const audio = useRef<HTMLAudioElement | null>(null), audioUrl = useRef<string | null>(null);
   const clockStart = useRef<number | null>(null), pendingText = useRef(''), finals = useRef('');
   const pendingIndex = useRef<number | null>(null);
+  const recoveredDraft = useRef(''), draftRef = useRef(draft);
+  draftRef.current = draft;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null), previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutedRef = useRef(muted), phaseRef = useRef(phase), sessionRef = useRef(sessionId);
   const historyBottom = useRef<HTMLDivElement | null>(null), composer = useRef<HTMLTextAreaElement | null>(null);
@@ -58,13 +61,15 @@ export function App() {
   }, [helpOpen, endOpen, confirmPatient]);
   const clearWait = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; };
   const stopAudio = () => {
+    if (audio.current) { audio.current.onplay = null; audio.current.onended = null; audio.current.onerror = null; }
     audio.current?.pause(); window.speechSynthesis?.cancel(); setAudioReady(false);
     if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
     audioUrl.current = null; audio.current = null;
   };
   const stopMic = () => {
     abortMic.current?.abort(); mic.current?.cancel(); mic.current = null;
-    const r = recognition.current; recognition.current = null; if (r) { r.onend = null; r.abort(); }
+    const r = recognition.current; recognition.current = null;
+    if (r) { r.onresult = null; r.onend = null; r.onerror = null; r.abort(); }
     setPartial('');
   };
   const cleanup = () => {
@@ -73,7 +78,9 @@ export function App() {
   };
   useEffect(() => () => {
     generation.current++; if (timer.current) clearTimeout(timer.current); if (previewTimer.current) clearTimeout(previewTimer.current);
-    abortMic.current?.abort(); mic.current?.cancel(); recognition.current?.abort(); ws.current?.close();
+    abortMic.current?.abort(); mic.current?.cancel();
+    if (recognition.current) { recognition.current.onresult = null; recognition.current.onend = null; recognition.current.onerror = null; recognition.current.abort(); }
+    ws.current?.close();
     audio.current?.pause(); window.speechSynthesis?.cancel(); if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
   }, []);
   useEffect(() => { historyBottom.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [turns, phase]);
@@ -111,7 +118,9 @@ export function App() {
     } catch { setPhase('ready'); setError('Patient audio was unavailable. You can read the reply.'); }
   };
   const start = (resume = false) => {
-    cleanup(); setError(''); setDraft(''); setPartial(''); setEndOpen(false);
+    const retainedDraft = resume ? pendingText.current || draftRef.current : recoveredDraft.current;
+    cleanup(); setError(''); setDraft(retainedDraft); setPartial(''); setEndOpen(false);
+    recoveredDraft.current = '';
     if (!resume) { pendingText.current = ''; pendingIndex.current = null; setTurns([]); setSessionId(null); clockStart.current = null; setElapsed(0); }
     if (mode === 'preview') {
       setSessionId(`preview-${crypto.randomUUID()}`); clockStart.current = Date.now();
@@ -149,13 +158,24 @@ export function App() {
             clearWait(); setTurns(current => appendTurns(current, [event.studentTurn, event.patientTurn])); pendingText.current = '';
             void playLiveAudio(event.audioBase64); break;
           case 'caption':
+            if (!['recording', 'finishing'].includes(phaseRef.current)) break;
             if (event.isFinal) { finals.current = `${finals.current} ${event.text}`.trim(); setDraft(finals.current); setPartial(''); }
             else setPartial(event.text); break;
-          case 'caption_done': clearWait(); stopMic(); setPhase('ready'); composer.current?.focus(); break;
+          case 'caption_done':
+            if (['recording', 'finishing'].includes(phaseRef.current)) {
+              clearWait(); stopMic(); setPhase('ready'); composer.current?.focus();
+            }
+            break;
           case 'session_ended': clearWait(); setError(''); stopMic(); stopAudio(); setPhase('ended'); setEndOpen(false); break;
           case 'error':
-            clearWait(); setError(event.message); stopMic();
-            if (event.code === 'RESUME_FAILED') { setSessionId(null); sessionRef.current = null; setPhase('idle'); }
+            setError(event.message);
+            // Speech failures do not acknowledge an in-flight patient turn.
+            if (phaseRef.current === 'thinking' && event.scope !== 'turn') break;
+            clearWait(); stopMic();
+            if (event.code === 'RESUME_FAILED') {
+              recoveredDraft.current = pendingText.current || draftRef.current;
+              setDraft(recoveredDraft.current); setSessionId(null); sessionRef.current = null; setPhase('idle');
+            }
             else { if (event.scope === 'turn') setDraft(pendingText.current); setPhase(sessionRef.current ? 'ready' : 'idle'); }
             break;
         }
@@ -169,7 +189,8 @@ export function App() {
     socket.onerror = () => { if (gen === generation.current) setError('Could not connect to the encounter backend. Preview mode is available while it is being integrated.'); };
   };
   const send = () => {
-    const text = draft.trim(); if (!text || phase !== 'ready' || text.length > 1000) return;
+    const text = draftRef.current.trim(); if (!text || phaseRef.current !== 'ready' || text.length > 1000) return;
+    phaseRef.current = 'thinking';
     stopAudio(); setError(''); setDraft(''); pendingText.current = text; pendingIndex.current = (turns.at(-1)?.index ?? -1) + 1; setPhase('thinking');
     if (mode === 'live') {
       if (ws.current?.readyState !== WebSocket.OPEN) { setDraft(text); setPhase('disconnected'); return; }
@@ -218,7 +239,11 @@ export function App() {
       let ready = false;
       const capture = await captureMicrophone(chunk => {
         if (!ready || gen !== generation.current) return;
-        if (socket.bufferedAmount > 192000) { controller.abort(); socket.send(JSON.stringify({ type: 'caption_stop' })); setError('Audio connection is too slow. Type your question instead.'); setPhase('ready'); return; }
+        if (socket.bufferedAmount > 192000) {
+          controller.abort(); socket.send(JSON.stringify({ type: 'caption_stop' }));
+          setError('Audio connection is too slow. Review the final captions, then type your question.');
+          phaseRef.current = 'finishing'; setPhase('finishing'); waitFor('Captions did not finish. Reconnect before continuing.'); return;
+        }
         if (socket.readyState === WebSocket.OPEN) socket.send(chunk);
       }, () => { if (gen === generation.current && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'caption_stop' })); }, controller.signal);
       if (gen !== generation.current || controller.signal.aborted) { capture.cancel(); return; }
@@ -261,9 +286,9 @@ export function App() {
       <p className="sidebar-note">A little practice.<br/>A better conversation.</p>
     </aside>
     <div className="main-space">
-    <header className="topbar"><button className="sidebar-toggle" aria-label="Toggle learning sidebar" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button><nav className="top-nav" aria-label="Workspace navigation"><button className={view === 'overview' ? 'selected' : ''} onClick={() => setView('overview')}>Overview</button><button className={view !== 'overview' ? 'selected' : ''} onClick={browseCases}>Practice</button></nav><div className="top-right"><span className={`mode-pill ${mode}`}><span/>{mode === 'preview' ? 'Scripted preview' : 'Live encounter'}</span><button className="icon-button" onClick={() => setHelpOpen(true)} aria-label="How this experience works"><CircleHelp size={21}/></button><div className="user-initials" aria-label="Student view">S</div></div></header>
+    <header className="topbar"><button className="sidebar-toggle" aria-label="Toggle learning sidebar" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? <PanelLeftOpen size={20}/> : <PanelLeftClose size={20}/>}</button><nav className="top-nav" aria-label="Workspace navigation"><button className={view === 'overview' ? 'selected' : ''} onClick={() => setView('overview')}>Overview</button><button className={view !== 'overview' ? 'selected' : ''} onClick={browseCases}>Practice</button></nav><div className="top-right"><span className={`mode-pill ${mode}`}><span/>{mode === 'preview' ? 'Scripted preview' : 'Live encounter'}</span><button className="icon-button" onClick={() => setHelpOpen(true)} aria-label="How this experience works"><CircleHelp size={21}/></button><div className="account-controls"><span className="account-name">{accountName}</span>{onExit && <button className="account-exit" onClick={() => { cleanup(); onExit(); }}>{previewOnly ? 'Exit preview' : 'Sign out'}</button>}</div></div></header>
     <main className="workspace">
-      <div className="page-heading"><div><div className="eyebrow"><span/>{view === 'overview' ? 'YOUR LEARNING SPACE' : view === 'cases' ? 'PRACTICE CASES' : 'PATIENT CONVERSATION'}</div><h1>{view === 'overview' ? 'Overview' : view === 'cases' ? 'Choose a patient' : 'Make space for their story.'}</h1><p>{view === 'overview' ? 'A space to build confidence in your clinical conversations.' : view === 'cases' ? 'Each simulated patient brings a different clinical focus and communication style.' : 'Listen with curiosity. Ask with care. Take it one question at a time.'}</p></div>{view === 'encounter' ? <div className="session-tools"><div className="mode-select" aria-label="Experience mode"><button aria-pressed={mode === 'preview'} disabled={active} onClick={() => { cleanup(); setMode('preview'); setPhase('idle'); setError(''); }}>Preview</button><button aria-pressed={mode === 'live'} disabled={active} onClick={() => { cleanup(); setMode('live'); setPhase('idle'); setError(''); }}>Live AI</button></div></div> : view === 'overview' ? <button className="primary-button" onClick={browseCases}>Browse practice cases <ArrowRight size={18}/></button> : <div className="case-count"><CircleDot size={23}/><span><strong>2 cases</strong><small>Available to practice</small></span></div>}</div>
+      <div className="page-heading"><div><div className="eyebrow"><span/>{view === 'overview' ? 'YOUR LEARNING SPACE' : view === 'cases' ? 'PRACTICE CASES' : 'PATIENT CONVERSATION'}</div><h1>{view === 'overview' ? 'Overview' : view === 'cases' ? 'Choose a patient' : 'Make space for their story.'}</h1><p>{view === 'overview' ? 'A space to build confidence in your clinical conversations.' : view === 'cases' ? 'Each simulated patient brings a different clinical focus and communication style.' : 'Listen with curiosity. Ask with care. Take it one question at a time.'}</p></div>{view === 'encounter' ? <div className="session-tools"><div className="mode-select" aria-label="Experience mode"><button aria-pressed={mode === 'preview'} disabled={active} onClick={() => { cleanup(); setMode('preview'); setPhase('idle'); setError(''); }}>Preview</button><button aria-pressed={mode === 'live'} disabled={active || previewOnly} title={previewOnly ? 'Sign in to use live encounters' : undefined} onClick={() => { cleanup(); setMode('live'); setPhase('idle'); setError(''); }}>Live AI</button></div></div> : view === 'overview' ? <button className="primary-button" onClick={browseCases}>Browse practice cases <ArrowRight size={18}/></button> : <div className="case-count"><CircleDot size={23}/><span><strong>2 cases</strong><small>Available to practice</small></span></div>}</div>
       {view === 'overview' && <div className="overview-grid"><section className="overview-card"><div className="eyebrow">A GENTLE PLACE TO BEGIN</div><h2>Choose a case to begin</h2><p>Practice a focused interview with a virtual patient. Speak or type, review your words, and listen to their reply.</p><button className="text-link" onClick={browseCases}>Choose a patient <ArrowRight size={16}/></button></section><section className="overview-card"><div className="eyebrow">YOUR PRACTICE EXPERIENCE</div><h2>Two perspectives. Room to listen.</h2><p>Meet Wyatt and Yvette. Start with scripted preview, or connect to the encounter backend for live AI.</p><button className="text-link" onClick={() => setHelpOpen(true)}>How it works <ArrowRight size={16}/></button></section></div>}
       {view === 'cases' && <><div className="patient-cards">{patients.map((p, i) => <article className="patient-card" key={p.key}><div className="case-card-top"><span className={`patient-initials ${p.key}`}>{p.initials}</span><span>CASE {String(i + 1).padStart(2, '0')}</span></div><h2>{p.name}</h2><p className="case-summary">{p.subtitle}</p><div className="case-details"><span className="detail-label">PRACTICE FOCUS</span><strong>{p.visit}</strong><span className="detail-label">PATIENT</span><strong>{p.age} years</strong><span className="detail-label">CONVERSATION APPROACH</span><p>Listen with curiosity. Take it one question at a time.</p></div><button className="case-start" onClick={() => openPatient(p)}>{active && patient.key === p.key ? 'Return to encounter' : 'Start encounter'}<ArrowRight size={18}/></button></article>)}</div><p className="case-disclaimer"><CircleHelp size={17}/>Patient details follow the provided sample cases. Avatar illustrations and dialogue are authored simulation choices.</p></>}
       <div hidden={view !== 'encounter'}>
@@ -275,7 +300,7 @@ export function App() {
           <div className="conversation-control"><div className="status-line" role="status"><span className={`status-dot ${phase}`}/>{labels[phase]}</div>{partial && <p className="live-caption" aria-live="polite">{partial}</p>}
             {phase === 'idle' ? <div className="start-area"><button className="primary-button" onClick={() => start()}>Begin conversation<ArrowRight size={17}/></button><span>{mode === 'preview' ? 'Try the flow with scripted replies' : 'Connect to the patient AI and voice backend'}</span></div> : phase === 'ended' ? <p className="control-hint">Choose another patient or practice this conversation again.</p> : phase === 'disconnected' ? <button className="primary-button" onClick={() => start(true)}>Reconnect to session <ArrowRight size={17}/></button> : <><div className="voice-controls"><button className="round-button" onClick={() => { stopAudio(); if (phase === 'speaking') setPhase('ready'); setMuted(!muted); }} aria-label={muted ? 'Enable patient audio' : 'Mute patient audio'}>{muted ? <VolumeX size={20}/> : <Volume2 size={20}/>}</button><div className="microphone-wrap"><button className={`microphone-button ${phase === 'recording' ? 'is-recording' : ''}`} disabled={phase !== 'ready' && phase !== 'recording'} onClick={() => void record()} aria-label={phase === 'recording' ? 'Stop recording and review captions' : 'Start microphone'}>{phase === 'recording' ? <Square size={22} fill="currentColor"/> : <Mic size={26}/>}</button><span>{phase === 'recording' ? 'Stop & review' : busy ? 'Just a moment' : 'Tap to speak'}</span></div><button className="round-button" disabled={!audioReady && phase !== 'speaking'} onClick={() => { if (phase === 'speaking') { audio.current?.pause(); window.speechSynthesis?.cancel(); setPhase('ready'); } else void audio.current?.play().catch(() => setError('Your browser could not play this audio.')); }} aria-label={phase === 'speaking' ? 'Pause patient audio' : 'Play patient reply'}>{phase === 'speaking' ? <Pause size={20}/> : <Play size={20}/>}</button></div><p className="control-hint">Your words will appear below. Review them before sending.</p></>}
             {error && <div className="error-message" role="alert">{error}<button aria-label="Dismiss message" onClick={() => setError('')}><X size={14}/></button></div>}
-            {active && <form className="composer" onSubmit={event => { event.preventDefault(); send(); }}><textarea ref={composer} aria-label="Your question" placeholder="Or type your question here…" value={draft} maxLength={1000} disabled={!canCompose && phase !== 'recording' && phase !== 'finishing'} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}/><button aria-label="Send question" type="submit" disabled={!canCompose || !draft.trim()}><Send size={18}/></button></form>}
+            {active && <form className="composer" onSubmit={event => { event.preventDefault(); send(); }}><textarea ref={composer} aria-label="Your question" placeholder="Or type your question here…" value={draft} maxLength={1000} disabled={!canCompose} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}/><button aria-label="Send question" type="submit" disabled={!canCompose || !draft.trim()}><Send size={18}/></button></form>}
             <div className="control-footer"><span><ShieldCheck size={14}/>A space to practice, not a clinical consultation.</span>{active && <button onClick={() => setEndOpen(true)} disabled={phase !== 'ready' && phase !== 'speaking'}>End session <ArrowRight size={13}/></button>}</div>
           </div>
         </section>

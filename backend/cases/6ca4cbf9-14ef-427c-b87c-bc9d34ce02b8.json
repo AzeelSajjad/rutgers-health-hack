@@ -4,7 +4,7 @@
   "age": 64,
   "sex": "female",
   "visitReason": "Understanding blood pressure and sodium",
-  "persona": "Yvette is a full-time state employee with an associate's degree in political science. The supplied personality is curious, earnest and overwhelmed. Medical explanations are difficult to follow and she is confused about sodium and salt. Ask focused clarification questions; do not portray confusion as low intelligence. Keep the supplied Stage II label without reclassifying it. Educational sample case. Use only supplied facts. Missing symptoms, medications, allergies, family history and treatment targets are unknown, not normal or absent. Do not infer behavior from demographic background. Do not invent clinical values or lipid units. Authored response styles are simulation adaptations, not validated predictions.",
+  "persona": "Yvette is a full-time state employee with an associate's degree in political science. The supplied personality is curious, earnest and overwhelmed. Ask focused clarification questions; do not portray confusion as low intelligence. Educational sample case. Use only supplied facts. Missing symptoms, medications, allergies, family history and treatment targets are unknown, not normal or absent. Do not infer behavior from demographic background. Do not invent clinical values or lipid units. Authored response styles are simulation adaptations, not validated predictions.",
   "voiceId": "Joanna",
   "facts": [
     {
