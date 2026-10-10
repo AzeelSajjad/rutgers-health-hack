@@ -55,6 +55,7 @@ class ScriptedStt implements Stt {
         onCaption(`(fake caption from ${chunks} audio chunks)`, true);
         onDone();
       },
+      cancel: () => onDone(),
     };
   }
 }

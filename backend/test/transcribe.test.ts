@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { ChunkQueue } from "../src/speech/transcribe.js";
+import { ChunkQueue, MAX_BUFFERED_BYTES, MAX_STREAM_BYTES, TranscribeStt } from "../src/speech/transcribe.js";
 
 async function drain(q: ChunkQueue): Promise<string[]> {
   const out: string[] = [];
   for await (const c of q) out.push(c.toString());
   return out;
 }
+
+const tick = () => new Promise((r) => setImmediate(r));
 
 describe("ChunkQueue", () => {
   it("yields chunks pushed before iteration, then stops on end", async () => {
@@ -28,7 +30,128 @@ describe("ChunkQueue", () => {
   it("ignores pushes after end", async () => {
     const q = new ChunkQueue();
     q.end();
-    q.push(Buffer.from("late"));
+    expect(q.push(Buffer.from("late"))).toBe(false);
     expect(await drain(q)).toEqual([]);
+  });
+
+  it("rejects pushes once a stalled consumer would exceed the buffer cap", () => {
+    const q = new ChunkQueue();
+    const chunk = Buffer.alloc(64 * 1024);
+    const results = Array.from({ length: 256 }, () => q.push(chunk));
+    const accepted = Math.floor(MAX_BUFFERED_BYTES / chunk.length);
+    expect(results.slice(0, accepted).every(Boolean)).toBe(true);
+    expect(results.slice(accepted).some(Boolean)).toBe(false);
+    expect(q.bufferedBytes).toBeLessThanOrEqual(MAX_BUFFERED_BYTES);
+    expect(q.bufferedBytes).toBe(accepted * chunk.length);
+  });
+
+  it("frees buffer space as chunks are consumed", async () => {
+    const q = new ChunkQueue({ maxBufferedBytes: 4 });
+    expect(q.push(Buffer.from("abcd"))).toBe(true);
+    expect(q.push(Buffer.from("e"))).toBe(false);
+    const it = q[Symbol.asyncIterator]();
+    expect((await it.next()).value?.toString()).toBe("abcd");
+    expect(q.bufferedBytes).toBe(0);
+    expect(q.push(Buffer.from("e"))).toBe(true);
+  });
+
+  it("cancel drops buffered chunks and yields nothing more", async () => {
+    const q = new ChunkQueue();
+    q.push(Buffer.from("a"));
+    q.push(Buffer.from("b"));
+    q.cancel();
+    expect(q.push(Buffer.from("c"))).toBe(false);
+    expect(await drain(q)).toEqual([]);
+    expect(q.bufferedBytes).toBe(0);
+  });
+
+  it("cancel releases a waiting consumer", async () => {
+    const q = new ChunkQueue();
+    const result = drain(q);
+    await Promise.resolve();
+    q.cancel();
+    expect(await result).toEqual([]);
+  });
+
+  it("end, unlike cancel, still drains buffered chunks", async () => {
+    const q = new ChunkQueue();
+    q.push(Buffer.from("a"));
+    q.push(Buffer.from("b"));
+    q.end();
+    expect(await drain(q)).toEqual(["a", "b"]);
+  });
+});
+
+/** Stands in for TranscribeStreamingClient: optionally drains the audio stream and rejects when aborted. */
+function fakeClient(opts: { drain: boolean }) {
+  const calls: { signal?: AbortSignal }[] = [];
+  const client = {
+    send: (cmd: { input: { AudioStream?: AsyncIterable<unknown> } }, options?: { abortSignal?: AbortSignal }) => {
+      const signal = options?.abortSignal;
+      calls.push({ signal });
+      return new Promise((resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(Object.assign(new Error("Request aborted"), { name: "AbortError" })));
+        if (opts.drain) {
+          void (async () => {
+            for await (const _ of cmd.input.AudioStream!) {
+              /* consume */
+            }
+            resolve({});
+          })();
+        }
+      });
+    },
+  };
+  return { client, calls };
+}
+
+function startWith(opts: { drain: boolean }) {
+  const { client, calls } = fakeClient(opts);
+  const stt = new TranscribeStt("us-east-1", client as never);
+  const events: string[] = [];
+  const errors: Error[] = [];
+  const stream = stt.start(
+    () => {},
+    () => events.push("done"),
+    (err) => {
+      events.push("error");
+      errors.push(err as Error);
+    },
+  );
+  return { stream, calls, events, errors };
+}
+
+describe("TranscribeStt", () => {
+  it("cancel aborts the request and reports done, not error", async () => {
+    const { stream, calls, events } = startWith({ drain: false });
+    await tick();
+    expect(calls[0].signal).toBeDefined();
+    stream.cancel();
+    expect(calls[0].signal!.aborted).toBe(true);
+    await tick();
+    expect(events).toEqual(["done"]);
+  });
+
+  it("a full buffer (stalled consumer) cancels the stream with an error", async () => {
+    const { stream, calls, events, errors } = startWith({ drain: false });
+    const chunk = Buffer.alloc(64 * 1024);
+    for (let i = 0; i < 256; i++) stream.push(chunk);
+    await tick();
+    expect(events).toEqual(["error"]);
+    expect(errors[0].message).toBe("caption buffer full");
+    expect(calls[0].signal!.aborted).toBe(true);
+  });
+
+  it("exceeding the per-stream byte budget cancels the stream with an error", async () => {
+    const { stream, calls, events, errors } = startWith({ drain: true });
+    const chunk = Buffer.alloc(64 * 1024);
+    const pushes = Math.ceil(MAX_STREAM_BYTES / chunk.length) + 1;
+    for (let i = 0; i < pushes; i++) {
+      stream.push(chunk);
+      await tick();
+    }
+    expect(events).toEqual(["error"]);
+    expect(errors[0].message).toBe("caption stream limit reached");
+    expect(calls[0].signal!.aborted).toBe(true);
   });
 });

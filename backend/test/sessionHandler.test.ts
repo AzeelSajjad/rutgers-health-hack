@@ -268,9 +268,10 @@ describe("session handler", () => {
       await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
       await handler.onMessage(json({ type: "caption_start" }));
       vi.advanceTimersByTime(119_999);
-      expect(stt.starts[0].ended).toBe(0);
+      expect(stt.starts[0].cancelled).toBe(0);
       vi.advanceTimersByTime(1);
-      expect(stt.starts[0].ended).toBe(1);
+      expect(stt.starts[0].cancelled).toBe(1);
+      expect(stt.starts[0].ended).toBe(0);
       handler.onAudio(Buffer.from([1]));
       expect(stt.pushed).toHaveLength(0);
 
@@ -278,6 +279,7 @@ describe("session handler", () => {
       await handler.onMessage(json({ type: "caption_stop" }));
       vi.advanceTimersByTime(120_000);
       expect(stt.starts[1].ended).toBe(1);
+      expect(stt.starts[1].cancelled).toBe(0);
     } finally {
       vi.useRealTimers();
     }
@@ -295,6 +297,32 @@ describe("session handler", () => {
     await handler.onMessage(json({ type: "caption_start" }));
     await handler.onMessage(json({ type: "end_session" }));
     expect(sent.at(-1)).toEqual({ type: "session_ended", sessionId: "s1" });
-    expect(stt.ended).toBe(1);
+    expect(stt.cancelled).toBe(1);
+    expect(stt.ended).toBe(0);
+  });
+
+  it("caption_stop ends the stream gracefully (end, not cancel) so the final caption still arrives", async () => {
+    const { handler, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    await handler.onMessage(json({ type: "caption_stop" }));
+    expect(stt.starts[0]).toMatchObject({ ended: 1, cancelled: 0 });
+  });
+
+  it("a replacing caption_start cancels the previous stream", async () => {
+    const { handler, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    expect(stt.starts[0]).toMatchObject({ ended: 0, cancelled: 1 });
+    expect(stt.starts[1]).toMatchObject({ ended: 0, cancelled: 0 });
+  });
+
+  it("onClose cancels the open caption stream", async () => {
+    const { handler, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    handler.onClose();
+    expect(stt.starts[0]).toMatchObject({ ended: 0, cancelled: 1 });
   });
 });

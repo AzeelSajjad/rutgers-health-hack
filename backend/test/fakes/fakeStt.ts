@@ -5,7 +5,10 @@ export interface FakeSttStart {
   onDone: () => void;
   onError: (err: unknown) => void;
   pushed: Buffer[];
+  /** Graceful end() calls (drain, then final caption). */
   ended: number;
+  /** Hard cancel() calls (drop buffered audio, stop now). */
+  cancelled: number;
 }
 
 /** Records each start() separately so tests can fire callbacks from a replaced (stale) stream. */
@@ -24,14 +27,24 @@ export class FakeStt implements Stt {
     return this.starts.reduce((n, s) => n + s.ended, 0);
   }
 
+  /** cancel() calls across all streams. */
+  get cancelled(): number {
+    return this.starts.reduce((n, s) => n + s.cancelled, 0);
+  }
+
   start(onCaption: CaptionHandler, onDone: () => void, onError: (err: unknown) => void): CaptionStream {
     if (this.failStart) throw new Error("FakeStt: forced start failure");
-    const rec: FakeSttStart = { onCaption, onDone, onError, pushed: [], ended: 0 };
+    const rec: FakeSttStart = { onCaption, onDone, onError, pushed: [], ended: 0, cancelled: 0 };
     this.starts.push(rec);
     return {
-      push: (chunk) => rec.pushed.push(chunk),
+      push: (chunk) => {
+        rec.pushed.push(chunk);
+      },
       end: () => {
         rec.ended++;
+      },
+      cancel: () => {
+        rec.cancelled++;
       },
     };
   }

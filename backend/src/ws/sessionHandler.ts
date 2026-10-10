@@ -60,10 +60,12 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
     fail("Something went wrong. Please try again.", scope);
   };
 
-  const stopCaptions = () => {
+  /** graceful: end() so buffered audio is transcribed and the final caption arrives; otherwise cancel(). */
+  const stopCaptions = (mode: "graceful" | "cancel") => {
     clearTimeout(captionTimer);
     captionTimer = undefined;
-    caption?.end();
+    if (mode === "graceful") caption?.end();
+    else caption?.cancel();
     caption = null;
   };
 
@@ -147,7 +149,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
 
       case "caption_start": {
         if (!sessionId) return fail("No active session");
-        stopCaptions();
+        stopCaptions("cancel");
         const gen = ++captionGen;
         let finished = false;
         const live = () => gen === captionGen && !finished;
@@ -171,7 +173,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
             },
           );
           caption = stream;
-          captionTimer = setTimeout(stopCaptions, MAX_CAPTION_MS);
+          captionTimer = setTimeout(() => stopCaptions("cancel"), MAX_CAPTION_MS);
         } catch (err) {
           failFrom(err);
         }
@@ -179,14 +181,14 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
       }
 
       case "caption_stop":
-        stopCaptions();
+        stopCaptions("graceful");
         return;
 
       case "end_session": {
         if (!sessionId) return fail("No active session");
         if (busy) return fail("The patient is still responding");
         busy = true;
-        stopCaptions();
+        stopCaptions("cancel");
         try {
           const id = sessionId;
           const ended = await withSessionLock(id, () => endEncounter(deps, id));
@@ -205,6 +207,6 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
   return {
     onMessage,
     onAudio: (chunk: Buffer) => caption?.push(chunk),
-    onClose: stopCaptions,
+    onClose: () => stopCaptions("cancel"),
   };
 }
