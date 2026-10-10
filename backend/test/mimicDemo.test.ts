@@ -93,6 +93,7 @@ it('generates distinct encounter IDs, avoids consecutive source repeats, and kee
     const second=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
     expect(first.statusCode).toBe(200);expect(Object.keys(first.json())).toEqual(['caseId']);
     const a=await repo.get(first.json().caseId),b=await repo.get(second.json().caseId);
+    expect(a!.patientName).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);expect(a!.patientName).not.toBe('New practice patient');expect((await repo.get(a!.id))!.patientName).toBe(a!.patientName);
     expect(a!.id).not.toBe(b!.id);expect(a!.caseOrigin!.sourceSubjectId).not.toBe(b!.caseOrigin!.sourceSubjectId);
     expect((await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'https://bad.example'}})).statusCode).toBe(403);
     await app.close();

@@ -47,7 +47,10 @@ export class FileCaseRepository implements CaseRepository {
     const choices = pool.filter(patient => patient.id !== this.lastSourceId);
     const source = (choices.length ? choices : pool)[randomInt(choices.length || pool.length)];
     this.lastSourceId = source.id;
-    const patient = {...source, id: `random-${randomUUID()}`, patientName: 'New practice patient'};
+    const firstNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jamie', 'Sam', 'Avery', 'Quinn', 'Cameron', 'Robin'];
+    const lastNames = ['Bennett', 'Rivera', 'Chen', 'Patel', 'Brooks', 'Reed', 'Parker', 'Ellis', 'Hayes', 'Kim', 'Santos', 'Lane'];
+    const patientName = `${firstNames[randomInt(firstNames.length)]} ${lastNames[randomInt(lastNames.length)]}`;
+    const patient = {...source, id: `random-${randomUUID()}`, patientName};
     this.generated.set(patient.id, patient);
     // Keep generated encounters bounded; existing sessions retain their own case.
     if (this.generated.size > 200) this.generated.delete(this.generated.keys().next().value!);
