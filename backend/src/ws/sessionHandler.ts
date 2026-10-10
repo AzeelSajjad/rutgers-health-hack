@@ -26,6 +26,8 @@ const FRIENDLY: Record<EncounterErrorCode, string> = {
   CASE_NOT_FOUND: "That patient case could not be found.",
 };
 
+const RESUME_GONE = new Set<EncounterErrorCode>(["SESSION_NOT_FOUND", "SESSION_ENDED", "CASE_NOT_FOUND"]);
+
 function sessionStarted(state: EncounterState, c: PatientCase, resumed: boolean): ServerMessage {
   return {
     type: "session_started",
@@ -98,8 +100,14 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
           sessionId = state.sessionId;
           send(sessionStarted(state, patientCase, true));
         } catch (err) {
-          if (!(err instanceof EncounterError)) deps.log?.("resume failed", err);
-          send({ type: "error", message: "Could not resume the previous session. Starting a new one.", code: "RESUME_FAILED" });
+          // Only a session that is really gone is RESUME_FAILED (the client then starts over).
+          // Anything else may be transient: the client keeps its session id and retries.
+          if (err instanceof EncounterError && RESUME_GONE.has(err.code)) {
+            send({ type: "error", message: "Could not resume the previous session. Starting a new one.", code: "RESUME_FAILED" });
+          } else {
+            deps.log?.("resume failed", err);
+            fail("Could not reconnect to your session. Retrying…");
+          }
         } finally {
           busy = false;
         }

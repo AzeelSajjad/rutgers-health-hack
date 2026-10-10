@@ -175,6 +175,26 @@ describe("session handler", () => {
     expect(sent[0]).toMatchObject({ type: "error", code: "RESUME_FAILED" });
   });
 
+  it("a transient resume failure is not RESUME_FAILED, so the client keeps its session id and retries", async () => {
+    const { handler, sent, deps } = setup();
+    deps.sessions.get = async () => {
+      throw new Error("ProvisionedThroughputExceededException");
+    };
+    await handler.onMessage(json({ type: "resume_session", sessionId: "s1" }));
+    expect(sent).toHaveLength(1);
+    expect(sent[0].type).toBe("error");
+    expect(sent[0]).not.toHaveProperty("code");
+  });
+
+  it("resume_session for an ended session fails with RESUME_FAILED", async () => {
+    const { handler, deps } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "end_session" }));
+    const sent2: ServerMessage[] = [];
+    await createSessionHandler(deps, (m) => sent2.push(m)).onMessage(json({ type: "resume_session", sessionId: "s1" }));
+    expect(sent2[0]).toMatchObject({ type: "error", code: "RESUME_FAILED" });
+  });
+
   it("forwards audio to the caption stream, captions to the client, and caption_done", async () => {
     const { handler, sent, stt } = setup();
     await handler.onMessage(json({ type: "caption_start" }));

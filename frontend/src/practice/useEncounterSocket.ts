@@ -54,11 +54,13 @@ export function useEncounterSocket(caseId: string) {
       ws.binaryType = "arraybuffer";
       socket.current = ws;
       const sendJson = (m: ClientMessage) => ws.send(JSON.stringify(m));
+      // True while this connection's resume_session is unanswered.
+      let resuming = false;
 
       ws.onopen = () => {
-        attempt = 0;
         dispatch({ type: "connected" });
         const saved = storage.get(key);
+        resuming = !!saved;
         sendJson(saved ? { type: "resume_session", sessionId: saved } : { type: "start_session", caseId });
       };
       ws.onmessage = (e) => {
@@ -77,6 +79,9 @@ export function useEncounterSocket(caseId: string) {
             captionWaiters.current.splice(0).forEach((resolve) => resolve());
             return;
           case "session_started":
+            // Reset the backoff only once a session is live, so failed resumes keep backing off.
+            attempt = 0;
+            resuming = false;
             storage.set(key, msg.sessionId);
             break;
           case "session_ended":
@@ -84,8 +89,13 @@ export function useEncounterSocket(caseId: string) {
             break;
           case "error":
             if (msg.code === "RESUME_FAILED") {
+              resuming = false;
               storage.remove(key);
               sendJson({ type: "start_session", caseId });
+            } else if (resuming) {
+              // Transient resume failure: keep the stored id and let the backoff reconnect resume again.
+              resuming = false;
+              ws.close();
             }
             break;
         }
