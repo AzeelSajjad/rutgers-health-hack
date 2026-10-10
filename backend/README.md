@@ -2,7 +2,8 @@
 
 CaseCoach's first backend feature contains exactly two predefined patients from
 `faculty-provided-sample-patient-details.csv`. Customization is future work.
-There is no HTTP server, AI conversation engine, database, or S3 download yet.
+The profile library provides no HTTP server or AI conversation engine. Demo AWS
+session storage is available separately; see the session storage section below.
 
 Chart preparation and validation are available in `app/chart.ts`. The frontend
 handoff is documented in `docs/chart-integration.md`, with TypeScript types in
@@ -96,3 +97,10 @@ The encounter contract remains data-driven: identity/avatar, behavior, clinical
 facts, unknowns, conversation rules, sources, and objectives are separate fields.
 Later customization can derive a new versioned case without overwriting these
 defaults. Validation, persistence, and creation routes will be separate work.
+
+## Demo session storage
+
+TypeScript helpers in `app/sessions.ts` connect the existing backend to one DynamoDB
+table and one private S3 bucket. Setup, teammate integration, and a short demo
+explanation are in `docs/aws-sessions.md`. Run `npm run aws:check` to check your local
+AWS login. Authentication and HTTP routes remain in the existing backend.
