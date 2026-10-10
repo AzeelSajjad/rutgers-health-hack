@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "patient_id": "4d619156-3250-4212-8399-129f3280fab1",
+  "patient_version": 1,
+  "items": [
+    {
+      "item_id": "bmi",
+      "label": "BMI",
+      "category": "vitals",
+      "value_type": "number",
+      "value": 32,
+      "display_value": "32",
+      "unit": "kg/m^2",
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "4d619156-3250-4212-8399-129f3280fab1",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "dyslipidemia",
+      "label": "Dyslipidemia",
+      "category": "history",
+      "value_type": "text",
+      "value": "Wyatt has dyslipidemia.",
+      "display_value": "Wyatt has dyslipidemia.",
+      "unit": null,
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "4d619156-3250-4212-8399-129f3280fab1",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "total-cholesterol",
+      "label": "Total cholesterol",
+      "category": "labs",
+      "value_type": "number",
+      "value": 235,
+      "display_value": "235",
+      "unit": null,
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "4d619156-3250-4212-8399-129f3280fab1",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "ldl",
+      "label": "LDL cholesterol",
+      "category": "labs",
+      "value_type": "number",
+      "value": 145,
+      "display_value": "145",
+      "unit": null,
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "4d619156-3250-4212-8399-129f3280fab1",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "constipation",
+      "label": "Bowel health",
+      "category": "history",
+      "value_type": "text",
+      "value": "Wyatt struggles with constipation and avoids talking about it.",
+      "display_value": "Wyatt struggles with constipation and avoids talking about it.",
+      "unit": null,
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "4d619156-3250-4212-8399-129f3280fab1",
+        "field": "notes"
+      }
+    }
+  ]
+}

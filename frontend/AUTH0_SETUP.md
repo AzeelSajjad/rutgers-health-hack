@@ -11,8 +11,8 @@ The hosted signup form and required profile fields are configured as described b
 ## Application settings
 
 1. In Auth0, create or select an **Application** with type **Single Page Application**.
-2. Add the exact CaseCoach origin to **Allowed Callback URLs**, **Allowed Logout URLs**, and **Allowed Web Origins**. For the current local preview, use `http://localhost:8000` in each field.
-3. Copy the tenant domain (for example, `your-tenant.us.auth0.com`) and client ID into `auth-config.js`, replacing the placeholders.
+2. Add the exact CaseCoach origin to **Allowed Callback URLs**, **Allowed Logout URLs**, and **Allowed Web Origins**. For local React development, use `http://localhost:5173` in each field.
+3. Set the public tenant domain and SPA client ID in `public/auth-config.js`, or use `VITE_AUTH0_DOMAIN` and `VITE_AUTH0_CLIENT_ID` in `frontend/.env`. The Auth0 SDK is installed through npm and bundled with React; no CDN SDK script is needed.
 4. Serve the `frontend` directory over HTTP and reload the page. For deployment, add the deployed HTTPS origin to all three allowlists too.
 
 ## Required signup fields and school email
@@ -52,7 +52,7 @@ In **Security > Multi-factor Auth**, require MFA for CaseCoach and enable Phone 
 
 ## Local demo behavior
 
-Until the tenant is configured, the sign-in page reports that Auth0 is not enabled and offers an explicitly unauthenticated demo preview. Authentication in this interface does not by itself protect an API or authorize access to patient data; a connected backend must validate access tokens and enforce its own access rules.
+The React landing screen offers an explicitly unauthenticated educational preview. It remains usable if tenant initialization or browser storage fails, and it does not enable live backend encounters. Authenticated entry uses the existing React patient and encounter interface. Authentication in this interface does not by itself protect an API or authorize access to patient data; a connected backend must validate access tokens and enforce its own access rules.
 
 ## Auth0 references
 

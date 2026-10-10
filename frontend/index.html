@@ -1,104 +1,13 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f5f7f8" />
-  <title>CaseCoach — Clinical encounter practice</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="interactions.css" />
-</head>
-<body>
-  <main class="auth-screen" id="authScreen">
-    <section class="auth-story"><a class="auth-brand" href="#"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v24M4 16h24"/><circle cx="16" cy="16" r="12"/></svg></span><span>casecoach<span class="brand-dot">.</span></span></a><div class="auth-story-copy"><div class="auth-kicker"><span></span> PRACTICE WITH PURPOSE</div><h1>Every patient<br>has a story.</h1><p>Build confidence in the moments that matter with realistic, guided clinical encounters.</p></div><div class="auth-visual"><div class="auth-orbit orbit-one"></div><div class="auth-orbit orbit-two"></div><div class="auth-visual-card"><div class="auth-visual-top"><span class="visual-pulse"></span> VIRTUAL PATIENT <span class="visual-time">LIVE</span></div><div class="visual-person"><div class="visual-avatar">MR</div><div><strong>Maria R.</strong><small>Emergency department</small></div></div><div class="visual-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="visual-caption">A more human way to practice</div></div><div class="auth-float-note"><span>✳</span> Learn by listening</div></div><div class="auth-story-footer">CLINICAL PRACTICE · BUILT FOR HEALTHCARE EDUCATION</div></section>
-    <section class="auth-form-side"><div class="auth-form-wrap"><div class="auth-form-brand"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v24M4 16h24"/><circle cx="16" cy="16" r="12"/></svg></span><span>casecoach<span class="brand-dot">.</span></span></div><div class="auth-welcome-label">YOUR LEARNING SPACE</div><h2>Welcome to CaseCoach</h2><p class="auth-description">Sign in with your username and password to continue practicing your clinical skills.</p><div class="auth-access-buttons"><button id="authSignIn" class="auth-primary" type="button">Sign in <span>→</span></button><button id="authStudentSignUp" class="auth-secondary" type="button">Student sign up</button><button id="authFacultySignUp" class="auth-secondary faculty-signup" type="button"><span><strong>Faculty sign up</strong><small>For educators and clinical instructors</small></span><span aria-hidden="true">→</span></button></div><p class="auth-signup-summary">Student and faculty accounts both use your first and last name, school email, username, and password. Faculty access may require school verification or administrator approval.</p><div class="auth-divider"><span>SECURE ACCESS</span></div><div class="auth0-note"><span class="auth0-lock">▣</span><p>Account access is securely managed by <strong>Auth0</strong>. Passwords and verification codes are entered on Auth0’s hosted pages.</p></div><p id="authStatus" class="auth-status" role="status" aria-live="polite">Set up your Auth0 application to enable sign in.</p><div id="demoAccess" class="demo-access"><button id="previewDemo" class="preview-demo" type="button">Preview demo without signing in</button><small>Demo preview only · authentication is not enabled</small></div><div class="auth-form-footer">By continuing, you agree to follow your program’s privacy and training policies.</div></div></section>
-  </main>
-
-  <div class="app-shell hidden" id="appShell">
-    <aside class="sidebar">
-      <a class="brand" href="#" aria-label="CaseCoach home"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v24M4 16h24"/><circle cx="16" cy="16" r="12"/></svg></span><span>casecoach<span class="brand-dot">.</span><small>CLINICAL PRACTICE</small></span></a>
-      <div class="course-label">LEARNING SPACE</div>
-      <div class="course-switcher"><button class="course-card" id="courseSwitcherButton" type="button" aria-haspopup="menu" aria-expanded="false"><span class="course-icon">✳</span><span class="course-copy"><strong id="activeCourseName">Clinical Skills I</strong><small id="activeCourseCohort">Spring cohort · 2026</small></span><span class="chevron">⌄</span></button><div class="popover course-menu hidden" id="courseMenu" role="menu" aria-label="Choose a learning space"><div class="popover-label">YOUR LEARNING SPACES</div><button type="button" role="menuitemradio" aria-checked="true" data-course-id="clinical-skills"><span class="course-option-icon">✳</span><span><strong>Clinical Skills I</strong><small>Spring cohort · 2026</small></span><i>✓</i></button><button type="button" role="menuitemradio" aria-checked="false" data-course-id="communication-lab"><span class="course-option-icon">◉</span><span><strong>Patient Communication Lab</strong><small>Summer cohort · 2026</small></span><i>✓</i></button><button type="button" role="menuitemradio" aria-checked="false" data-course-id="assessment"><span class="course-option-icon">▤</span><span><strong>Foundations of Assessment</strong><small>Fall cohort · 2026</small></span><i>✓</i></button><div class="popover-footnote">Demo learning spaces</div></div></div>
-      <nav class="main-nav" aria-label="Main navigation">
-        <a href="#" class="nav-item" data-page="overview"><span>▦</span>Overview</a>
-        <a href="#" class="nav-item active" data-page="practice" aria-current="page"><span>◉</span>Practice cases <b>4</b></a>
-        <a href="#" class="nav-item" data-page="progress"><span>▤</span>My progress</a>
-        <a href="#" class="nav-item" data-page="feedback"><span>♡</span>Saved feedback</a>
-      </nav>
-    </aside>
-
-    <main class="main-content">
-      <header class="topbar"><button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><path class="toggle-arrow" d="m9 9 3 3-3 3"/></svg></button><nav class="top-taskbar" aria-label="Workspace navigation"><a href="#" class="taskbar-link" data-page="overview">Overview</a><a href="#" class="taskbar-link selected" data-page="practice" aria-current="page">Practice</a><a href="#" class="taskbar-link" data-page="progress">My progress</a><a href="#" class="taskbar-link" data-page="feedback">Saved feedback</a></nav><div class="top-actions"><span class="privacy-pill"><span class="privacy-dot"></span> Private practice</span><button class="icon-button" aria-label="Notifications">♧<i></i></button><div class="profile-menu-wrap"><button class="profile-trigger" id="profileMenuButton" type="button" aria-label="Open profile menu" aria-haspopup="menu" aria-expanded="false"><span class="avatar student-avatar small" id="topAccountAvatar">JS</span><span class="profile-caret">⌄</span></button><div class="popover profile-menu hidden" id="profileMenu" role="menu" aria-label="Account options"><div class="profile-menu-header"><div class="avatar student-avatar" id="menuAccountAvatar">JS</div><div><strong id="menuAccountName">Jordan Smith</strong><small id="menuAccountSubtext">Medical student</small></div></div><button type="button" role="menuitem" id="openAccountSettings"><span>⚙</span> Account settings</button><button type="button" role="menuitem" data-page="progress"><span>▤</span> My progress</button><button type="button" role="menuitem" data-page="feedback"><span>♡</span> Saved feedback</button><div class="popover-separator"></div><button id="authLogoutButton" class="menu-signout hidden" type="button" role="menuitem"><span>↪</span> Sign out</button></div></div></div></header>
-      <section class="dashboard-page hidden" id="overviewPage" aria-labelledby="overviewTitle">
-        <div class="dashboard-heading"><div><div class="eyebrow"><span class="live-dot"></span> YOUR LEARNING SPACE</div><h1 id="overviewTitle">Overview</h1><p>A clear view of your clinical interview practice.</p></div><button class="dashboard-primary" type="button" data-page="practice">Browse practice cases <span>→</span></button></div>
-        <div class="dashboard-stats" id="overviewStats"></div>
-        <div class="dashboard-grid"><section class="dashboard-panel overview-continue"><div class="dashboard-panel-heading"><div><span class="dashboard-kicker">PICK UP WHERE YOU LEFT OFF</span><h2 id="continueTitle">Choose a case to begin</h2></div><span class="panel-icon">◉</span></div><p id="continueDescription">Practice a focused interview with a virtual patient, then review your saved debrief.</p><button class="dashboard-link" id="continuePractice" type="button">Choose a patient <span>→</span></button></section><section class="dashboard-panel"><div class="dashboard-panel-heading"><div><span class="dashboard-kicker">RECENT ACTIVITY</span><h2>Your latest sessions</h2></div><button class="dashboard-link compact" data-page="progress" type="button">View progress →</button></div><div id="overviewRecent" class="activity-list"></div></section></div>
-        <section class="dashboard-panel case-goals-panel"><div class="dashboard-panel-heading"><div><span class="dashboard-kicker">PRACTICE BY CLINICAL FOCUS</span><h2>Cases to explore</h2></div></div><div id="overviewCases" class="overview-case-list"></div></section>
-      </section>
-
-      <div id="practicePage" class="practice-page">
-      <section class="patient-selection" id="patientSelection"><div class="selection-heading"><div><div class="eyebrow"><span class="live-dot"></span> PRACTICE CASES</div><h1>Choose a patient</h1><p>Each simulated patient has a different clinical focus and communication style.</p></div><div class="selection-count"><span class="count-icon">◉</span><span><strong>3 cases</strong><small>Available to practice</small></span></div></div><div class="patient-cards" id="patientCards"></div><p class="selection-note"><span>i</span> Demo patients and chart details are fictionalized for this interface sample.</p></section>
-      <section class="case-heading hidden" id="caseHeading"><div><button class="back-cases" id="backToCases">← All patients</button><div class="eyebrow"><span class="live-dot"></span> SIMULATED PATIENT <span class="eyebrow-divider">·</span> <span id="caseNumber">CASE 04</span></div><h1 id="caseTitle">Shortness of breath</h1><p id="caseSubtitle">Emergency department · De-identified teaching case</p></div><div class="case-meta"><div><span class="meta-icon">◷</span><span><strong>~12 min</strong><small>Estimated time</small></span></div><div><span class="meta-icon">◎</span><span><strong id="caseCondition">Heart failure</strong><small>Clinical focus</small></span></div></div></section>
-
-      <div class="workspace hidden" id="encounterWorkspace">
-        <section class="conversation-panel panel">
-          <div class="panel-header"><div class="patient-title"><div class="patient-portrait" id="patientPortrait" aria-hidden="true">MR</div><div><h2 id="patientName">Patient</h2><p><span class="online-dot"></span> Virtual patient <span class="panel-dot">·</span> <span id="patientPronouns">—</span></p></div></div><div class="header-tools"><span class="voice-status" id="voiceStatus">Ready to talk</span><button class="more-button" aria-label="More options">···</button></div></div>
-          <div class="chat-toolbar"><span>ENCOUNTER <b>IN PROGRESS</b></span><button id="clearChat" class="text-button">↻ <span>Restart</span></button></div>
-          <div class="patient-stage" aria-label="Virtual patient avatar"><div class="stage-orbit stage-orbit-one"></div><div class="stage-orbit stage-orbit-two"></div><div class="stage-avatar" id="patientStagePortrait" aria-hidden="true">MR</div><div class="stage-caption"><strong id="stagePatientName">Maria R.</strong><span><i></i> Virtual patient</span></div></div>
-          <div class="messages" id="messages" aria-live="polite"><div class="typing-indicator hidden" id="typing"><span></span><span></span><span></span><small>Patient is thinking</small></div></div>
-          <form class="composer" id="chatForm"><button type="button" class="composer-tool" id="micButton" title="Speak your question" aria-label="Start speaking"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"/></svg></button><textarea id="messageInput" rows="1" placeholder="Ask a question… or use your mic" aria-label="Your message"></textarea><button class="send-button" type="submit" aria-label="Send confirmed message" title="Send message"><span>Send</span><b aria-hidden="true">↑</b></button><div class="composer-hint">Review or edit your message, then select Send <span class="voice-disclosure">· Voice uses your browser’s speech service</span></div></form>
-        </section>
-
-        <aside class="chart-panel panel">
-          <div class="chart-header"><div><div class="eyebrow chart-eyebrow"><span class="chart-spark">✳</span> PATIENT CHART</div><h2>Clinical record</h2></div><button class="expand-button" title="Chart options" aria-label="Chart options">↗</button></div>
-          <div class="chart-patient"><div class="avatar patient-avatar chart-avatar" id="chartAvatar">--</div><div class="chart-name"><strong id="chartPatientName">Patient</strong><span>De-identified patient</span></div><span class="record-badge">SIMULATED</span></div>
-          <div class="record-note"><span>i</span> Demo values only. Use approved, de-identified MIMIC extracts when connecting real cases.</div>
-          <div class="chart-tabs" role="tablist" aria-label="Patient chart sections"><button class="chart-tab active" role="tab" aria-selected="true" data-tab="summary">Summary</button><button class="chart-tab" role="tab" aria-selected="false" data-tab="history">History</button><button class="chart-tab" role="tab" aria-selected="false" data-tab="results">Results</button></div>
-          <div class="tab-content" id="chartContent"></div>
-          <div class="chart-footer"><span class="lock">▣</span><span>De-identified educational case<br><small>Data shown for practice only</small></span><span class="footer-check">✓</span></div>
-        </aside>
-      </div>
-      <div class="session-footer hidden" id="sessionFooter"><span><span class="saved-dot"></span> Progress saved automatically</span><span>Take your time. You can end the encounter whenever you’re ready.</span><button id="endSession" class="end-session-button">End encounter <span>→</span></button></div>
-      </div>
-
-      <section class="dashboard-page hidden" id="progressPage" aria-labelledby="progressTitle">
-        <div class="dashboard-heading"><div><div class="eyebrow"><span class="live-dot"></span> YOUR DEVELOPMENT</div><h1 id="progressTitle">My progress</h1><p>Track the interviews you’ve completed and the cases you’ve explored.</p></div><button class="dashboard-primary" type="button" data-page="practice">Practice a case <span>→</span></button></div>
-        <div class="dashboard-stats" id="progressStats"></div>
-        <div class="dashboard-grid progress-grid"><section class="dashboard-panel"><div class="dashboard-panel-heading"><div><span class="dashboard-kicker">PRACTICE BY CASE</span><h2>Clinical focus areas</h2></div></div><div class="focus-breakdown" id="focusBreakdown"></div></section><section class="dashboard-panel"><div class="dashboard-panel-heading"><div><span class="dashboard-kicker">RECENT SESSIONS</span><h2>Practice history</h2></div></div><div id="progressHistory" class="activity-list"></div></section></div>
-        <p class="dashboard-disclaimer">Progress is stored in this browser for this demo. A connected version can sync it to your student account.</p>
-      </section>
-
-      <section class="dashboard-page hidden" id="feedbackPage" aria-labelledby="feedbackTitle">
-        <div class="dashboard-heading feedback-heading"><div><div class="eyebrow"><span class="live-dot"></span> YOUR REFLECTIONS</div><h1 id="feedbackTitle">Saved feedback</h1><p>Review debriefs by the patient case you practiced.</p></div><label class="case-filter-label" for="feedbackCaseFilter">CASE<select id="feedbackCaseFilter"><option value="all">All practice cases</option></select></label></div>
-        <div class="feedback-summary" id="feedbackSummary"></div>
-        <div id="savedFeedbackList" class="saved-feedback-list"></div>
-      </section>
-    </main>
-  </div>
-  <div class="toast" id="toast" role="status"></div>
-  <div class="settings-overlay hidden" id="accountSettingsModal" role="dialog" aria-modal="true" aria-labelledby="accountSettingsTitle">
-    <section class="settings-dialog"><header class="settings-header"><div><div class="eyebrow"><span class="chart-spark">✳</span> YOUR PROFILE</div><h2 id="accountSettingsTitle">Account settings</h2><p>Review your learning account and sign-in details.</p></div><button class="debrief-close" id="closeAccountSettings" type="button" aria-label="Close account settings">×</button></header><div class="settings-content"><section class="settings-card"><div class="settings-card-icon">◎</div><div><h3>Profile</h3><p id="settingsDisplayName">Jordan Smith</p><small id="settingsEmail">Demo account · not signed in</small><small id="settingsAccountType">Student demo</small></div></section><section class="settings-card"><div class="settings-card-icon">✳</div><div><h3>Learning space</h3><p id="settingsCourseName">Clinical Skills I</p><small id="settingsCourseCohort">Spring cohort · 2026</small></div><button id="settingsChooseCourse" type="button">Change</button></section><section class="settings-card settings-security"><div class="settings-card-icon">▣</div><div><h3>Security & sign-in</h3><p>Passwords and verification settings are handled by Auth0.</p><small>Use “Forgot password?” on the Auth0 sign-in page to request an email reset.</small></div></section><div class="settings-data-note"><strong>Practice data</strong><p>Progress and saved debriefs in this prototype are stored in this browser.</p></div></div><footer class="settings-footer"><button class="settings-close-button" id="settingsDone" type="button">Done</button></footer></section>
-  </div>
-  <div class="debrief-overlay hidden" id="debriefModal" role="dialog" aria-modal="true" aria-labelledby="debriefTitle">
-    <section class="debrief-dialog">
-      <header class="debrief-header"><div><div class="eyebrow"><span class="chart-spark">✳</span> POST-ENCOUNTER REVIEW</div><h2 id="debriefTitle">Your case debrief</h2><p>Review the case findings and reflection points after the interview.</p></div><button class="debrief-close" id="closeDebrief" aria-label="Close debrief">×</button></header>
-      <div class="debrief-content">
-        <section class="debrief-callout"><span class="debrief-mark">✦</span><div><strong>Case impression</strong><p id="debriefImpression">This is a simulated learning case, not a clinical diagnosis.</p></div></section>
-        <section class="key-takeaway"><span class="takeaway-mark">↗</span><div><strong>One key takeaway for next time</strong><p id="debriefTakeaway"></p></div></section>
-        <div class="debrief-grid">
-          <section class="debrief-card"><div class="section-title">KEY DETAILS IN THIS CASE</div><ul id="debriefDetails"></ul></section>
-          <section class="debrief-card"><div class="section-title">REFLECTION & FOLLOW-UP</div><ul id="debriefReflection"></ul></section>
-        </div>
-        <p class="debrief-footnote">Demo feedback is based on the sample case. In a connected version, feedback can be tailored to the interview transcript and faculty learning objectives.</p>
-      </div>
-      <footer class="debrief-footer"><span><span class="saved-dot"></span> Debrief saved with this practice session</span><button id="debriefDone">Close debrief <span>→</span></button></footer>
-    </section>
-  </div>
-  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.4/auth0-spa-js.production.js"></script>
-  <script src="auth-config.js"></script>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CaseCoach</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="/auth-config.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
