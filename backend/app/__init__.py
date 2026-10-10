@@ -1,0 +1,1 @@
+"""CaseCoach backend application."""

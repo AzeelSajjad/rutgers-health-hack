@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "patient_id": "6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8",
+  "patient_version": 1,
+  "items": [
+    {
+      "item_id": "hypertension",
+      "label": "Hypertension",
+      "category": "history",
+      "value_type": "text",
+      "value": "Yvette was recently diagnosed with Stage II hypertension, as stated in the CSV.",
+      "display_value": "Yvette was recently diagnosed with Stage II hypertension, as stated in the CSV.",
+      "unit": null,
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "blood-pressure",
+      "label": "Blood pressure",
+      "category": "vitals",
+      "value_type": "blood_pressure",
+      "value": {
+        "systolic": 155,
+        "diastolic": 110
+      },
+      "display_value": "155/110",
+      "unit": "mmHg",
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "bmi",
+      "label": "BMI",
+      "category": "vitals",
+      "value_type": "number",
+      "value": 34,
+      "display_value": "34",
+      "unit": "kg/m^2",
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8",
+        "field": "notes"
+      }
+    },
+    {
+      "item_id": "sodium-confusion",
+      "label": "Sodium and salt understanding",
+      "category": "nutrition",
+      "value_type": "text",
+      "value": "Yvette is confused about sodium and salt.",
+      "display_value": "Yvette is confused about sodium and salt.",
+      "unit": null,
+      "source_reference": {
+        "source_id": "provided-csv",
+        "filename": "faculty-provided-sample-patient-details.csv",
+        "patient_uuid": "6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8",
+        "field": "notes"
+      }
+    }
+  ]
+}
