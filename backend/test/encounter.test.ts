@@ -107,6 +107,22 @@ describe("runTurn", () => {
     expect((await sessions.get("session-1"))!.disclosedFactIds).toEqual(["a", "c"]);
   });
 
+  it("does not commit facts as disclosed when the reply falls back, but still records the request", async () => {
+    const { deps, llm, sessions } = setup();
+    await startEncounter(deps, "test-case");
+    llm.queueJson("analyze_turn", { requestedFactIds: ["b"], exploredFactIds: [], cues: [] });
+    llm.texts.push("Draft one.", "Draft two.");
+    llm.queueJson("validate_reply", { ok: false, problems: ["bad"] });
+    llm.queueJson("validate_reply", { ok: false, problems: ["bad"] });
+    const r = await runTurn(deps, "session-1", "What medicines do you take?");
+    expect(r.patientTurn.validation).toBe("fallback");
+    expect(r.patientTurn.newlyDisclosedFactIds).toEqual([]);
+    expect(r.state.disclosedFactIds).toEqual(["a"]);
+    const saved = (await sessions.get("session-1"))!;
+    expect(saved.disclosedFactIds).toEqual(["a"]);
+    expect(saved.turns[0].requestedFactIds).toEqual(["b"]);
+  });
+
   it("rejects empty text without calling the LLM", async () => {
     const { deps, llm } = setup();
     await startEncounter(deps, "test-case");

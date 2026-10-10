@@ -105,6 +105,10 @@ export async function runTurn(deps: EngineDeps, sessionId: string, rawText: stri
   );
   if (reply.validation === "fallback") deps.log?.(`reply fell back after validation: ${reply.problems.join("; ")}`);
   const audio = await reply.audio;
+  // The patient never actually said anything about the new facts, so don't count them as disclosed.
+  const fellBack = reply.validation === "fallback";
+  const committedDisclosed = fellBack ? state.disclosedFactIds : disclosed;
+  const committedNew = fellBack ? [] : newlyDisclosed;
 
   const at = nowIso(deps);
   const studentTurn: Turn = {
@@ -122,13 +126,13 @@ export async function runTurn(deps: EngineDeps, sessionId: string, rawText: stri
     text: reply.text,
     at,
     styleId,
-    newlyDisclosedFactIds: newlyDisclosed,
+    newlyDisclosedFactIds: committedNew,
     validation: reply.validation,
   };
   const next: EncounterState = {
     ...state,
     styleId,
-    disclosedFactIds: disclosed,
+    disclosedFactIds: committedDisclosed,
     turns: [...state.turns, studentTurn, patientTurn],
   };
   await deps.sessions.save(next);
