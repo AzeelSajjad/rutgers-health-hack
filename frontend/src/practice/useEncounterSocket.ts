@@ -63,7 +63,12 @@ export function useEncounterSocket(caseId: string) {
       };
       ws.onmessage = (e) => {
         if (typeof e.data !== "string") return;
-        const msg = JSON.parse(e.data) as ServerMessage;
+        let msg: ServerMessage;
+        try {
+          msg = JSON.parse(e.data) as ServerMessage;
+        } catch {
+          return; // ignore malformed frames
+        }
         switch (msg.type) {
           case "caption":
             applyCaption({ type: "caption", text: msg.text, isFinal: msg.isFinal });

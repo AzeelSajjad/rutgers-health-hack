@@ -20,9 +20,14 @@ export function PracticePage() {
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const lastSent = useRef("");
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+  const startingRef = useRef(false);
 
   useEffect(() => {
-    if (followCaptions) setDraft(captionText(enc.captions));
+    // Only overwrite once a caption actually arrives, so starting the mic doesn't wipe typed text.
+    const text = captionText(enc.captions);
+    if (followCaptions && text) setDraft(text);
   }, [enc.captions, followCaptions]);
 
   const play = useCallback((b64: string) => {
@@ -55,16 +60,28 @@ export function PracticePage() {
     lastSent.current = "";
   }, [view.transcript.length]);
 
-  const canTalk = view.connection === "open" && view.status === "active" && !view.waiting && !speaking;
+  const canTalk = view.connection === "open" && view.status === "active" && !view.waiting && !speaking && !sending;
 
   async function startListening() {
-    setMicError(null);
+    if (startingRef.current) return;
+    startingRef.current = true;
     try {
-      await mic.start(enc.sendAudio);
-    } catch {
-      setMicError("Microphone unavailable (it needs localhost or HTTPS and permission). You can type your question instead.");
-      return;
+      setMicError(null);
+      let started: boolean;
+      try {
+        started = await mic.start(enc.sendAudio);
+      } catch {
+        setMicError("Microphone unavailable (it needs localhost or HTTPS and permission). You can type your question instead.");
+        return;
+      }
+      if (!started) return;
+      beginCaptions();
+    } finally {
+      startingRef.current = false;
     }
+  }
+
+  function beginCaptions() {
     // Start Transcribe only once audio can flow; it closes streams that stay silent for about 15 s.
     enc.startCaptions();
     setFollowCaptions(true);
@@ -77,21 +94,38 @@ export function PracticePage() {
     setListening(false);
   }
 
-  async function send() {
-    let text = draftRef.current;
-    if (listening) {
-      stopListening();
-      if (followCaptions) {
-        await enc.waitForCaptionsDone(1000);
-        text = enc.getCaptionText();
-      }
+  // Drop the mic if the connection or session goes away while listening.
+  useEffect(() => {
+    if (listening && (view.connection !== "open" || view.status === "ended")) {
+      mic.stop();
+      setListening(false);
     }
-    setFollowCaptions(false);
-    text = text.trim();
-    if (!text) return;
-    if (enc.sendTurn(text)) {
-      lastSent.current = text;
-      setDraft("");
+  }, [listening, view.connection, view.status, mic]);
+
+  async function send() {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      let text = draftRef.current;
+      if (listening) {
+        stopListening();
+        if (followCaptions) {
+          await enc.waitForCaptionsDone(1000);
+          const captioned = enc.getCaptionText();
+          if (captioned) text = captioned;
+        }
+      }
+      setFollowCaptions(false);
+      text = text.trim();
+      if (!text) return;
+      if (enc.sendTurn(text)) {
+        lastSent.current = text;
+        setDraft("");
+      }
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   }
 
