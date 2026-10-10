@@ -1,6 +1,8 @@
 node_modules/
 dist/
 work/
-# Local artifacts from earlier development are never committed.
+infrastructure/deployment.local.json
+.env
+.env.*
 .venv/
 __pycache__/
