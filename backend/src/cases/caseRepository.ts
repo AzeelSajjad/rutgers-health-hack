@@ -1,3 +1,6 @@
+import {randomInt, randomUUID} from 'node:crypto';
+import {gunzipSync} from 'node:zlib';
+import {buildDemoCases, parseTable} from '../imports/mimicDemo.js';
 import {readFile, readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {PatientCaseSchema, type PatientCase} from '@casecoach/shared';
@@ -8,15 +11,19 @@ export interface PracticeCaseCard {
 }
 export interface CaseRepository {
   get(id: string): Promise<PatientCase | null>;
+  generateRandom?(): Promise<PatientCase>;
   listCards?(): Promise<PracticeCaseCard[]>;
 }
 const SAFE_ID=/^[a-z0-9-]+$/;
 const DEFAULT_IDS=new Set(['4d619156-3250-4212-8399-129f3280fab1','6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8']);
 export class FileCaseRepository implements CaseRepository {
+  private readonly generated = new Map<string, PatientCase>();
+  private lastSourceId: string | undefined;
   private readonly directories: string[];
-  constructor(dir: string | string[]) {this.directories=typeof dir === 'string' ? [dir] : dir;}
+  constructor(dir: string | string[], private readonly demoSource?: string) {this.directories=typeof dir === 'string' ? [dir] : dir;}
   async get(id: string): Promise<PatientCase | null> {
     if (!SAFE_ID.test(id)) return null;
+    if (this.generated.has(id)) return this.generated.get(id)!;
     for (const dir of this.directories) {
       let raw: string;
       try {raw=await readFile(join(dir,`${id}.json`),'utf8');}
@@ -26,6 +33,25 @@ export class FileCaseRepository implements CaseRepository {
       return patient;
     }
     return null;
+  }
+  async generateRandom(): Promise<PatientCase> {
+    if (!this.demoSource) throw new Error('Demo source unavailable');
+    const read = async (name: string, columns: string[]) => parseTable(gunzipSync(await readFile(join(this.demoSource!, `hosp-${name}.csv.gz`)), {maxOutputLength: 100_000_000}).toString('utf8'), columns);
+    const [patients, admissions, diagnoses, dictionary] = await Promise.all([
+      read('patients',['subject_id','gender','anchor_age','anchor_year']),
+      read('admissions',['subject_id','hadm_id','admittime','dischtime','hospital_expire_flag','deathtime']),
+      read('diagnoses_icd',['subject_id','hadm_id','seq_num','icd_code','icd_version']),
+      read('d_icd_diagnoses',['icd_code','icd_version','long_title']),
+    ]);
+    const pool = buildDemoCases({patients, admissions, diagnoses, dictionary}, 100);
+    const choices = pool.filter(patient => patient.id !== this.lastSourceId);
+    const source = (choices.length ? choices : pool)[randomInt(choices.length || pool.length)];
+    this.lastSourceId = source.id;
+    const patient = {...source, id: `random-${randomUUID()}`, patientName: 'New practice patient'};
+    this.generated.set(patient.id, patient);
+    // Keep generated encounters bounded; existing sessions retain their own case.
+    if (this.generated.size > 200) this.generated.delete(this.generated.keys().next().value!);
+    return patient;
   }
   async listCards(): Promise<PracticeCaseCard[]> {
     const ids=new Set<string>();

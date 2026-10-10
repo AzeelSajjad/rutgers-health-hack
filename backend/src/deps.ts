@@ -14,7 +14,7 @@ export function createDeps(): HandlerDeps {
     fileURLToPath(new URL("../experience-cases", import.meta.url)),
     fileURLToPath(new URL("../cases", import.meta.url)),
     fileURLToPath(new URL("../work/mimic-demo/cases", import.meta.url)),
-  ]);
+  ], fileURLToPath(new URL("../work/mimic-demo/source", import.meta.url)));
   if (config.fakeAws) {
     console.warn("FAKE_AWS=1: using scripted fakes, no AWS calls.");
     return createFakeDeps(cases);

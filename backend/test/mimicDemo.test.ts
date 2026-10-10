@@ -1,3 +1,4 @@
+import {gzipSync} from 'node:zlib';
 import {describe,it,expect} from 'vitest';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -78,4 +79,24 @@ describe('case catalog and encounter integration',()=>{
     const repo=new FileCaseRepository([fileURLToPath(new URL('../experience-cases/',import.meta.url)),join(tmpdir(),'nonexistent-casecoach-demo-directory')]);
     expect((await repo.listCards()).map(card=>card.origin)).toEqual(['default','default']);
   });
+});
+
+it('generates distinct encounter IDs, avoids consecutive source repeats, and keeps facts private',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'random-demo-'));
+  try {
+    const data=tables();data.patients.push({...data.patients[0],subject_id:'2'});data.admissions.push({...data.admissions[0],subject_id:'2',hadm_id:'20'});data.diagnoses.push({...data.diagnoses[0],subject_id:'2',hadm_id:'20'});
+    for(const [name,rows] of Object.entries({patients:data.patients,admissions:data.admissions,diagnoses_icd:data.diagnoses,d_icd_diagnoses:data.dictionary})){
+      const columns=Object.keys(rows[0]);await writeFile(join(dir,`hosp-${name}.csv.gz`),gzipSync(columns.join(',')+'\n'+rows.map(row=>columns.map(key=>row[key]).join(',')).join('\n')));
+    }
+    const repo=new FileCaseRepository([],dir),app=Fastify();registerCatalogRoute(app,repo,new Set(['http://localhost']));
+    const first=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
+    const second=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
+    expect(first.statusCode).toBe(200);expect(Object.keys(first.json())).toEqual(['caseId']);
+    const a=await repo.get(first.json().caseId),b=await repo.get(second.json().caseId);
+    expect(a!.id).not.toBe(b!.id);expect(a!.caseOrigin!.sourceSubjectId).not.toBe(b!.caseOrigin!.sourceSubjectId);
+    expect((await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'https://bad.example'}})).statusCode).toBe(403);
+    await app.close();
+    const unavailable=Fastify();registerCatalogRoute(unavailable,new FileCaseRepository([]),new Set());
+    expect((await unavailable.inject({method:'POST',url:'/api/cases/random'})).statusCode).toBe(503);await unavailable.close();
+  }finally{await rm(dir,{recursive:true,force:true});}
 });

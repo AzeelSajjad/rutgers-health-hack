@@ -12,7 +12,7 @@ export function parseTable(csv: string, required: string[]): Row[] {
   return rows;
 }
 export function buildDemoCases(tables: DemoTables, limit = 5): PatientCase[] {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error('Limit must be 1–20');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Limit must be 1–100');
   const people = new Map(tables.patients.map(row => [row.subject_id, row]));
   if (people.size !== tables.patients.length) throw new Error('Duplicate patient identifiers');
   const dictionary = new Map(tables.dictionary.map(row => [`${row.icd_version}:${row.icd_code}`, row.long_title]));

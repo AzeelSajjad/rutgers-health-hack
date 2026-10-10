@@ -56,3 +56,9 @@ These are record-grounded practice drafts. They do not reconstruct actual patien
 ## Tests
 
 `npm test --workspace backend` and `npm test --workspace frontend` cover joins, ICD version/leading-zero handling, exclusions, missing fields, deterministic generation, keeping defaults, public projection, origin checks, starting an imported encounter with fake dependencies, library navigation and retry behavior. Live Bedrock/Polly audio is not exercised by the automated tests.
+
+## Random patient option
+
+The library keeps the two defaults and offers **Generate random patient**. POST `/api/cases/random` reads the downloaded demo source tables, selects a random eligible record (avoiding the immediately previous record), builds a new case with a unique encounter ID, and returns only `{caseId}`. The browser opens `/practice?case=...`. No source identifiers or hidden facts are returned to the selection page. The source download is reused; each click does not fetch PhysioNet again.
+
+Generated cases are held in backend memory (up to 200) and disappear after a restart. This prototype requires the encounter and generation requests to reach the same backend instance. Repeated records can occur across the finite demo cohort. The importer must be run once on each backend deployment; its five prebuilt files are no longer displayed as selection options.

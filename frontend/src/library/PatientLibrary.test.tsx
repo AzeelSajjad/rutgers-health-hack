@@ -7,10 +7,10 @@ const defaults=[{id:'wyatt',name:'Wyatt Nelson',age:18,visitReason:'Nutrition',o
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 it('shows defaults separately from imported cases and uses the correct encounter ID',async()=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({cases:[...defaults,{id:'mimic-demo-abc',name:'Practice Patient 01',age:62,visitReason:'Hospital record discussion',origin:'mimic_iv_demo',clinicalReviewStatus:'not_reviewed',citation:'https://doi.org/10.13026/dp1f-ex47'}]})}));
-  render(<PatientLibrary/>);await screen.findByText('Practice Patient 01');
+  render(<PatientLibrary/>);await screen.findByText('Wyatt Nelson');
   expect(screen.getByRole('heading',{name:/Default patients/})).toBeTruthy();
-  expect(screen.getByRole('heading',{name:/Additional practice/})).toBeTruthy();
-  expect(screen.getAllByRole('link',{name:/Start encounter/}).map(link=>link.getAttribute('href'))).toEqual(['/practice?case=wyatt','/practice?case=yvette','/practice?case=mimic-demo-abc']);
+  expect(screen.getByRole('heading',{name:/Try someone new/})).toBeTruthy();
+  expect(screen.getAllByRole('link',{name:/Start encounter/}).map(link=>link.getAttribute('href'))).toEqual(['/practice?case=wyatt','/practice?case=yvette']);
 });
 it('offers retry when backend is unavailable',async()=>{
   const fetchMock=vi.fn().mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValueOnce({ok:true,json:async()=>({cases:defaults})});vi.stubGlobal('fetch',fetchMock);
@@ -19,4 +19,10 @@ it('offers retry when backend is unavailable',async()=>{
 });
 it('rejects malformed cards and duplicate IDs',()=>{
   for(const value of [null,{cases:[null]},{cases:[defaults[0],defaults[0]]},{cases:[{...defaults[0],id:'../escape'}]}])expect(()=>parseLibrary(value)).toThrow();
+});
+
+it('requests a random patient and shows an actionable failure',async()=>{
+  const fetchMock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({cases:defaults})}).mockResolvedValueOnce({ok:false,json:async()=>({error:'Import required'})});
+  vi.stubGlobal('fetch',fetchMock);render(<PatientLibrary/>);fireEvent.click(await screen.findByRole('button',{name:'Generate random patient'}));
+  await screen.findByText('Import required');expect(fetchMock).toHaveBeenLastCalledWith('/api/cases/random',{method:'POST'});
 });
