@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { EncounterState } from "@casecoach/shared";
-import { InMemorySessionStore } from "../src/sessions/sessionStore.js";
+import { DynamoSessionStore, InMemorySessionStore } from "../src/sessions/sessionStore.js";
 
 const state = (): EncounterState => ({
   sessionId: "s1",
@@ -32,5 +32,20 @@ describe("InMemorySessionStore", () => {
     const store = new InMemorySessionStore();
     await store.create(state());
     await expect(store.create(state())).rejects.toThrow();
+  });
+});
+
+describe("DynamoSessionStore", () => {
+  it("reads with ConsistentRead so a resume sees the latest saved turn", async () => {
+    const store = new DynamoSessionStore("us-east-1", "sessions");
+    const inputs: Record<string, unknown>[] = [];
+    (store as unknown as { doc: { send: (c: { input: Record<string, unknown> }) => Promise<unknown> } }).doc = {
+      send: async (c) => {
+        inputs.push(c.input);
+        return { Item: state() };
+      },
+    };
+    expect(await store.get("s1")).toEqual(state());
+    expect(inputs[0]).toMatchObject({ TableName: "sessions", Key: { sessionId: "s1" }, ConsistentRead: true });
   });
 });

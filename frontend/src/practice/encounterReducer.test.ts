@@ -32,6 +32,8 @@ describe("encounterReducer", () => {
       transcript: [turn(0, "student", "Hi"), turn(1, "patient", "Hello")],
     });
     expect(s.transcript).toHaveLength(2);
+    expect(s.resumes).toBe(1);
+    expect(started.resumes).toBe(0);
   });
 
   it("appends both turns, records a style change and queues audio", () => {

@@ -43,7 +43,7 @@ export class DynamoSessionStore implements SessionStore {
   }
 
   async get(id: string): Promise<EncounterState | null> {
-    const res = await this.doc.send(new GetCommand({ TableName: this.table, Key: { sessionId: id } }));
+    const res = await this.doc.send(new GetCommand({ TableName: this.table, Key: { sessionId: id }, ConsistentRead: true }));
     return (res.Item as EncounterState | undefined) ?? null;
   }
 

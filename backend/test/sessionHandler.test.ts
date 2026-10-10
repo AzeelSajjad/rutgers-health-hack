@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { PatientCase, ServerMessage } from "@casecoach/shared";
 import { createSessionHandler, type HandlerDeps } from "../src/ws/sessionHandler.js";
 import { InMemorySessionStore } from "../src/sessions/sessionStore.js";
@@ -112,6 +112,35 @@ describe("session handler", () => {
     expect(msg.resumed).toBe(true);
     expect(msg.transcript).toHaveLength(2);
     expect(msg.disclosedFacts.map((f) => f.id)).toEqual(["a", "b"]);
+  });
+
+  it("a resume on another connection waits for an in-flight turn and includes it", async () => {
+    const { handler, deps, llm } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let ttsCalled = false;
+    deps.tts = {
+      synthesize: async (text: string) => {
+        ttsCalled = true;
+        await gate;
+        return Buffer.from(`mp3:${text}`);
+      },
+    };
+    queueTurn(llm);
+    const turn = handler.onMessage(json({ type: "student_turn", text: "What do you take?" }));
+    await vi.waitFor(() => expect(ttsCalled).toBe(true));
+
+    const sent2: ServerMessage[] = [];
+    const reconnected = createSessionHandler(deps, (m) => sent2.push(m));
+    const resume = reconnected.onMessage(json({ type: "resume_session", sessionId: "s1" }));
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    await Promise.all([turn, resume]);
+
+    const msg = sent2[0];
+    if (msg.type !== "session_started") throw new Error(`expected session_started, got ${msg.type}`);
+    expect(msg.transcript.map((t) => t.text)).toEqual(["What do you take?", "I take a pill twice a day."]);
   });
 
   it("resume_session for an unknown session fails with RESUME_FAILED", async () => {

@@ -56,6 +56,16 @@ export function PracticePage() {
     }
   }, [view.error]);
 
+  // After a reconnect, a turn lost with the old socket is missing from the resumed transcript: give it back.
+  // Declared before the transcript-length effect below so it reads lastSent before that clears it.
+  useEffect(() => {
+    if (!view.resumes || !lastSent.current) return;
+    const text = lastSent.current;
+    const lastStudent = view.transcript.filter((t) => t.speaker === "student").at(-1);
+    if (lastStudent?.text !== text) setDraft((d) => d || text);
+    lastSent.current = "";
+  }, [view.resumes, view.sessionId, view.transcript]);
+
   useEffect(() => {
     lastSent.current = "";
   }, [view.transcript.length]);

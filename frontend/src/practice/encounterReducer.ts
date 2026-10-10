@@ -4,6 +4,8 @@ export interface EncounterView {
   connection: "connecting" | "open" | "closed";
   status: "starting" | "active" | "ended";
   sessionId: string | null;
+  /** Counts resumed session_started messages so the page can react to each resume. */
+  resumes: number;
   patient: PatientSummary | null;
   styleLabel: string | null;
   previousStyleLabel: string | null;
@@ -27,6 +29,7 @@ export const initialEncounterView: EncounterView = {
   connection: "connecting",
   status: "starting",
   sessionId: null,
+  resumes: 0,
   patient: null,
   styleLabel: null,
   previousStyleLabel: null,
@@ -51,6 +54,7 @@ export function encounterReducer(s: EncounterView, a: EncounterAction): Encounte
         ...s,
         status: "active",
         sessionId: a.sessionId,
+        resumes: a.resumed ? s.resumes + 1 : s.resumes,
         patient: a.patient,
         styleLabel: a.styleLabel,
         previousStyleLabel: null,

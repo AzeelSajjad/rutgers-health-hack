@@ -11,6 +11,7 @@ import {
 } from "../engine/encounter.js";
 import { styleLabel } from "../engine/style.js";
 import type { CaptionStream, Stt } from "../speech/transcribe.js";
+import { withSessionLock } from "./sessionLock.js";
 
 export interface HandlerDeps extends EngineDeps {
   stt: Stt;
@@ -90,7 +91,9 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
         if (busy) return fail("Please wait");
         busy = true;
         try {
-          const { state, patientCase } = await getActiveEncounter(deps, msg.sessionId);
+          const { state, patientCase } = await withSessionLock(msg.sessionId, () =>
+            getActiveEncounter(deps, msg.sessionId),
+          );
           sessionId = state.sessionId;
           send(sessionStarted(state, patientCase, true));
         } catch (err) {
@@ -108,7 +111,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
         busy = true;
         send({ type: "patient_thinking" });
         try {
-          const r = await runTurn(deps, sessionId, msg.text);
+          const id = sessionId;
+          const r = await withSessionLock(id, () => runTurn(deps, id, msg.text));
           send({
             type: "patient_turn",
             studentTurn: r.studentTurn,
@@ -166,7 +170,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
         if (busy) return fail("The patient is still responding");
         stopCaptions();
         try {
-          const ended = await endEncounter(deps, sessionId);
+          const id = sessionId;
+          const ended = await withSessionLock(id, () => endEncounter(deps, id));
           sessionId = null;
           send({ type: "session_ended", sessionId: ended.sessionId });
         } catch (err) {
