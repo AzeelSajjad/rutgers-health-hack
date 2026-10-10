@@ -91,6 +91,22 @@ describe("session handler", () => {
     expect(sent).toContainEqual({ type: "error", message: "The patient is still responding" });
   });
 
+  it.each([
+    ["end_session first", ["end_session", "student_turn"]],
+    ["student_turn first", ["student_turn", "end_session"]],
+  ])("end_session racing a student_turn (%s): exactly one is rejected as busy", async (_label, order) => {
+    const { handler, sent, llm } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    queueTurn(llm);
+    const msgs = order.map((type) =>
+      handler.onMessage(json(type === "student_turn" ? { type, text: "What do you take?" } : { type })),
+    );
+    await Promise.all(msgs);
+    expect(sent.filter((m) => m.type === "error" && m.message === "The patient is still responding")).toHaveLength(1);
+    const ended = sent.findIndex((m) => m.type === "session_ended");
+    if (ended >= 0) expect(sent.slice(ended + 1).some((m) => m.type === "patient_turn")).toBe(false);
+  });
+
   it("maps engine errors to friendly messages", async () => {
     const { handler, sent } = setup();
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));

@@ -168,6 +168,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
       case "end_session": {
         if (!sessionId) return fail("No active session");
         if (busy) return fail("The patient is still responding");
+        busy = true;
         stopCaptions();
         try {
           const id = sessionId;
@@ -176,6 +177,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
           send({ type: "session_ended", sessionId: ended.sessionId });
         } catch (err) {
           failFrom(err);
+        } finally {
+          busy = false;
         }
         return;
       }
