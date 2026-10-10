@@ -1,20 +1,37 @@
 import type { CaptionHandler, CaptionStream, Stt } from "../../src/speech/transcribe.js";
 
+export interface FakeSttStart {
+  onCaption: CaptionHandler;
+  onDone: () => void;
+  onError: (err: unknown) => void;
+  pushed: Buffer[];
+  ended: number;
+}
+
+/** Records each start() separately so tests can fire callbacks from a replaced (stale) stream. */
 export class FakeStt implements Stt {
-  pushed: Buffer[] = [];
-  ended = 0;
-  onCaption?: CaptionHandler;
-  onDone?: () => void;
-  onError?: (err: unknown) => void;
+  starts: FakeSttStart[] = [];
+  /** Throws from start() when set, to simulate Transcribe failing synchronously. */
+  failStart = false;
+
+  /** Audio pushed across all streams. */
+  get pushed(): Buffer[] {
+    return this.starts.flatMap((s) => s.pushed);
+  }
+
+  /** end() calls across all streams. */
+  get ended(): number {
+    return this.starts.reduce((n, s) => n + s.ended, 0);
+  }
 
   start(onCaption: CaptionHandler, onDone: () => void, onError: (err: unknown) => void): CaptionStream {
-    this.onCaption = onCaption;
-    this.onDone = onDone;
-    this.onError = onError;
+    if (this.failStart) throw new Error("FakeStt: forced start failure");
+    const rec: FakeSttStart = { onCaption, onDone, onError, pushed: [], ended: 0 };
+    this.starts.push(rec);
     return {
-      push: (chunk) => this.pushed.push(chunk),
+      push: (chunk) => rec.pushed.push(chunk),
       end: () => {
-        this.ended++;
+        rec.ended++;
       },
     };
   }

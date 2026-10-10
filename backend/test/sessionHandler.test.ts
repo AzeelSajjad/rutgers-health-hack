@@ -124,10 +124,10 @@ describe("session handler", () => {
     const { handler, sent, stt } = setup();
     await handler.onMessage(json({ type: "caption_start" }));
     handler.onAudio(Buffer.from([1, 2]));
-    stt.onCaption!("what brings", false);
-    stt.onCaption!("What brings you in?", true);
+    stt.starts[0].onCaption("what brings", false);
+    stt.starts[0].onCaption("What brings you in?", true);
     await handler.onMessage(json({ type: "caption_stop" }));
-    stt.onDone!();
+    stt.starts[0].onDone();
     expect(stt.pushed).toHaveLength(1);
     expect(stt.ended).toBe(1);
     expect(sent).toEqual([
@@ -135,6 +135,36 @@ describe("session handler", () => {
       { type: "caption", text: "What brings you in?", isFinal: true },
       { type: "caption_done" },
     ]);
+  });
+
+  it("ignores callbacks from a caption stream that was replaced, and forwards the new one", async () => {
+    const { handler, sent, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    sent.length = 0;
+    await handler.onMessage(json({ type: "caption_start" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    const [a, b] = stt.starts;
+    a.onCaption("stale words", true);
+    a.onDone();
+    a.onError(new Error("late failure"));
+    expect(sent).toEqual([]);
+    b.onCaption("fresh words", false);
+    b.onDone();
+    expect(sent).toEqual([
+      { type: "caption", text: "fresh words", isFinal: false },
+      { type: "caption_done" },
+    ]);
+  });
+
+  it("sends caption_done at most once per stream across the error and done paths", async () => {
+    const { handler, sent, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    sent.length = 0;
+    await handler.onMessage(json({ type: "caption_start" }));
+    stt.starts[0].onError(new Error("network"));
+    stt.starts[0].onDone();
+    expect(sent.filter((m) => m.type === "caption_done")).toHaveLength(1);
+    expect(sent.filter((m) => m.type === "error")).toHaveLength(1);
   });
 
   it("audio before caption_start is ignored", () => {

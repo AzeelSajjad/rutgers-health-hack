@@ -42,6 +42,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
   let sessionId: string | null = null;
   let busy = false;
   let caption: CaptionStream | null = null;
+  // Bumped on every caption_start so callbacks from a replaced stream become no-ops.
+  let captionGen = 0;
 
   const fail = (message: string) => send({ type: "error", message });
   const failFrom = (err: unknown) => {
@@ -126,14 +128,25 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
 
       case "caption_start": {
         stopCaptions();
+        const gen = ++captionGen;
+        let finished = false;
+        const live = () => gen === captionGen && !finished;
+        const finish = () => {
+          if (!live()) return;
+          finished = true;
+          send({ type: "caption_done" });
+        };
         const stream: CaptionStream = deps.stt.start(
-          (text, isFinal) => send({ type: "caption", text, isFinal }),
-          () => send({ type: "caption_done" }),
+          (text, isFinal) => {
+            if (live()) send({ type: "caption", text, isFinal });
+          },
+          finish,
           (err) => {
             deps.log?.("speech recognition failed", err);
             if (caption === stream) caption = null;
+            if (!live()) return;
             fail("Speech recognition stopped. Please try again or type your question.");
-            send({ type: "caption_done" });
+            finish();
           },
         );
         caption = stream;
