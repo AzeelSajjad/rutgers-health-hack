@@ -35,6 +35,8 @@ export function useEncounterSocket(caseId: string) {
   // Mirrors caption state synchronously so code awaiting caption_done reads the final text, not a stale render.
   const latestCaptions = useRef<CaptionState>(emptyCaptions);
   const captionWaiters = useRef<(() => void)[]>([]);
+  // True from caption_stop until caption_done: Transcribe is still finalizing even though the mic is off.
+  const finalizing = useRef(false);
 
   const applyCaption = useCallback((a: CaptionAction) => {
     latestCaptions.current = captionReducer(latestCaptions.current, a);
@@ -76,6 +78,7 @@ export function useEncounterSocket(caseId: string) {
             applyCaption({ type: "caption", text: msg.text, isFinal: msg.isFinal });
             return;
           case "caption_done":
+            finalizing.current = false;
             captionWaiters.current.splice(0).forEach((resolve) => resolve());
             return;
           case "session_started":
@@ -103,6 +106,7 @@ export function useEncounterSocket(caseId: string) {
       };
       ws.onclose = () => {
         if (socket.current === ws) socket.current = null;
+        finalizing.current = false;
         dispatch({ type: "disconnected" });
         if (disposed) return;
         retry = setTimeout(connect, Math.min(10_000, 1000 * 2 ** attempt++));
@@ -142,10 +146,12 @@ export function useEncounterSocket(caseId: string) {
       [sendJson],
     ),
     startCaptions: useCallback(() => {
+      finalizing.current = false;
       applyCaption({ type: "reset" });
       sendJson({ type: "caption_start" });
     }, [sendJson, applyCaption]),
     stopCaptions: useCallback(() => {
+      finalizing.current = true;
       sendJson({ type: "caption_stop" });
     }, [sendJson]),
     sendAudio: useCallback((pcm: ArrayBuffer) => {
@@ -155,6 +161,7 @@ export function useEncounterSocket(caseId: string) {
     waitForCaptionsDone: useCallback(
       (timeoutMs: number) =>
         new Promise<void>((resolve) => {
+          if (!finalizing.current) return resolve();
           const done = () => {
             clearTimeout(timer);
             captionWaiters.current = captionWaiters.current.filter((w) => w !== done);
@@ -165,6 +172,7 @@ export function useEncounterSocket(caseId: string) {
         }),
       [],
     ),
+    isFinalizing: useCallback(() => finalizing.current, []),
     getCaptionText: useCallback(() => captionText(latestCaptions.current), []),
     endSession: useCallback(() => {
       sendJson({ type: "end_session" });
