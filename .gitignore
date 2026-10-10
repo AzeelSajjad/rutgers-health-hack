@@ -1,6 +1,12 @@
 node_modules/
+dist/
 .env
 .env.*
 !.env.example
+backend/work/
+backend/infrastructure/deployment.local.json
+backend/.venv/
+__pycache__/
+
 .DS_Store
 *.mp3
