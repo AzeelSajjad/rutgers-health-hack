@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CaseCoach voice test</title>
+<style>body{font:17px system-ui;background:#f5f8fa;color:#18343e;margin:0}main{max-width:760px;margin:40px auto;padding:24px}section{background:white;border:1px solid #d8e3e8;border-radius:14px;padding:24px;margin:24px 0}button{font:inherit;padding:10px 18px;background:#087e92;color:white;border:0;border-radius:7px;cursor:pointer}button:disabled{opacity:.45}textarea{box-sizing:border-box;width:100%;font:inherit;padding:12px;border:1px solid #b9cbd2;border-radius:8px}#partial{color:#607980}#error{color:#a32626}audio{width:100%}</style>
+<main><h1>CaseCoach voice test</h1><p>Test the student’s microphone and the patient’s voice.</p><p id="error" role="alert"></p>
+<section><h2>1. Student speaks</h2><button id="start">Start microphone</button> <button id="stop" disabled>Stop microphone</button><p id="status" role="status">Ready</p><p id="partial" aria-live="polite"></p><label for="transcript">Final transcript — review before sending to the patient AI</label><textarea id="transcript" rows="4"></textarea><p>This test captures speech. Your teammate connects the patient AI.</p></section>
+<section><h2>2. Patient speaks</h2><label for="reply">Patient reply</label><textarea id="reply" rows="3">I have been feeling tired lately, and I’m having trouble keeping up with my medications.</textarea><p><button id="speak">Generate patient audio</button></p><audio id="audio" controls></audio><p id="speechStatus" role="status"></p></section></main>
+<script type="module">
+import {startTranscription,getPatientAudio} from './voice-client.js';
+const $=id=>document.getElementById(id);let recording,audioUrl;
+$('start').onclick=async()=>{
+  $('error').textContent='';$('start').disabled=true;$('audio').pause();$('speak').disabled=true;$('transcript').value='';$('partial').textContent='';const finals=new Map();
+  try{recording=await startTranscription({baseUrl:location.origin,
+    onTranscript:event=>{if(event.isPartial)$('partial').textContent=event.text;else{finals.set(event.id,event.text);$('transcript').value=[...finals.values()].join(' ');$('partial').textContent='';}},
+    onError:message=>{$('error').textContent=message;},
+    onStatus:status=>{$('status').textContent={recording:'Listening…',finishing:'Finishing transcript…',done:'Transcript ready',closed:'Microphone stopped'}[status];if(status==='recording')$('stop').disabled=false;if(status==='done'||status==='closed'){$('start').disabled=false;$('stop').disabled=true;$('speak').disabled=false;}}
+  });}catch(error){$('error').textContent=error.message;$('start').disabled=false;$('speak').disabled=false;}
+};
+$('stop').onclick=()=>{$('stop').disabled=true;recording?.stop();};
+$('speak').onclick=async()=>{
+  $('error').textContent='';$('speak').disabled=true;$('start').disabled=true;$('speechStatus').textContent='Generating audio…';
+  try{const blob=await getPatientAudio($('reply').value,location.origin);$('audio').pause();if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(blob);$('audio').src=audioUrl;$('speechStatus').textContent='Audio ready. Press play if needed.';await $('audio').play().catch(()=>{});}
+  catch(error){$('error').textContent=error.message;$('speechStatus').textContent='';}finally{$('speak').disabled=false;$('start').disabled=false;}
+};
+window.addEventListener('pagehide',()=>{recording?.cancel();if(audioUrl)URL.revokeObjectURL(audioUrl);});
+</script></html>

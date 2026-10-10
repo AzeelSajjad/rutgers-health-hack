@@ -9,10 +9,11 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "test": "vitest run",
+    "test": "vitest run && tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke-turn.ts",
-    "eval": "RUN_LIVE_EVALS=1 vitest run evals"
+    "eval": "RUN_LIVE_EVALS=1 vitest run evals",
+    "import:profiles": "tsx scripts/import-sample-profiles.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.34.4",
@@ -22,6 +23,7 @@
     "@aws-sdk/client-transcribe-streaming": "^3.1149.0",
     "@aws-sdk/lib-dynamodb": "^3.1149.0",
     "@casecoach/shared": "*",
+    "csv-parse": "^7.0.3",
     "dotenv": "^18.0.7",
     "fastify": "^5.12.5",
     "ws": "^8.22.0",
