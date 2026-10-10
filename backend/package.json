@@ -9,10 +9,10 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
-    "import:profiles": "tsx scripts/import-sample-profiles.ts",
-    "aws:check": "tsx scripts/check-aws.ts",
-    "aws:deploy": "tsx scripts/deploy-sessions.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "import:profiles": "node --import tsx scripts/import-sample-profiles.ts",
+    "aws:check": "node --import tsx scripts/check-aws.ts",
+    "aws:deploy": "node --import tsx scripts/deploy-sessions.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1149.0",
