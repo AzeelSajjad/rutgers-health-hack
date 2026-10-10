@@ -34,7 +34,7 @@ function setup() {
 function queueHappyTurn(llm: FakeLlm, reply = "I take a pill twice a day.") {
   llm.queueJson("analyze_turn", { requestedFactIds: ["b"], exploredFactIds: [], cues: ["acknowledged_concern"] });
   llm.texts.push(reply);
-  llm.queueJson("validate_reply", { ok: true, problems: [] });
+  llm.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
 }
 
 describe("startEncounter / getActiveEncounter", () => {
@@ -98,11 +98,11 @@ describe("runTurn", () => {
     await startEncounter(deps, "test-case");
     llm.queueJson("analyze_turn", { requestedFactIds: ["c"], exploredFactIds: [], cues: [] });
     llm.texts.push("Hm, sometimes.");
-    llm.queueJson("validate_reply", { ok: true, problems: [] });
+    llm.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
     await runTurn(deps, "session-1", "Do you ever miss doses?");
     llm.queueJson("analyze_turn", { requestedFactIds: ["c"], exploredFactIds: ["c"], cues: ["open_ended_question"] });
     llm.texts.push("When I work late I just skip it.");
-    llm.queueJson("validate_reply", { ok: true, problems: [] });
+    llm.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
     await runTurn(deps, "session-1", "What usually happens on those days?");
     expect((await sessions.get("session-1"))!.disclosedFactIds).toEqual(["a", "c"]);
   });
@@ -112,8 +112,8 @@ describe("runTurn", () => {
     await startEncounter(deps, "test-case");
     llm.queueJson("analyze_turn", { requestedFactIds: ["b"], exploredFactIds: [], cues: [] });
     llm.texts.push("Draft one.", "Draft two.");
-    llm.queueJson("validate_reply", { ok: false, problems: ["bad"] });
-    llm.queueJson("validate_reply", { ok: false, problems: ["bad"] });
+    llm.queueJson("validate_reply", { ok: false, issues: ["invents_detail"], lockedFactIds: [] });
+    llm.queueJson("validate_reply", { ok: false, issues: ["invents_detail"], lockedFactIds: [] });
     const r = await runTurn(deps, "session-1", "What medicines do you take?");
     expect(r.patientTurn.validation).toBe("fallback");
     expect(r.patientTurn.newlyDisclosedFactIds).toEqual([]);

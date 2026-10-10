@@ -30,7 +30,7 @@ const json = (m: unknown) => JSON.stringify(m);
 function queueTurn(llm: FakeLlm) {
   llm.queueJson("analyze_turn", { requestedFactIds: ["b"], exploredFactIds: [], cues: [] });
   llm.texts.push("I take a pill twice a day.");
-  llm.queueJson("validate_reply", { ok: true, problems: [] });
+  llm.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
 }
 
 describe("session handler", () => {

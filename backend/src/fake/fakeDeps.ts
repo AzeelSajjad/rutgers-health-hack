@@ -28,7 +28,7 @@ function scriptedAnalysis(userJson: string) {
 class ScriptedLlm implements Llm {
   async json<S extends z.ZodType>(args: { purpose: string; system: string; user: string; schema: S }): Promise<z.infer<S>> {
     if (args.purpose === "analyze_turn") return args.schema.parse(scriptedAnalysis(args.user));
-    return args.schema.parse({ ok: true, problems: [] });
+    return args.schema.parse({ ok: true, issues: [], lockedFactIds: [] });
   }
 
   async text(args: { purpose: string; system: string; messages: ChatMessage[] }): Promise<string> {

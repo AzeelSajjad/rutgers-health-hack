@@ -1,8 +1,9 @@
 import type { ValidationOutcome } from "@casecoach/shared";
 import type { Llm } from "../llm/llm.js";
 import { buildPatientMessages, buildPatientSystemPrompt } from "./patientPrompt.js";
-import { precheckReply, redactProblems } from "./precheck.js";
-import { validateReply, type ReplyInput } from "./validateReply.js";
+import { precheckReply, type PrecheckIssue } from "./precheck.js";
+import { renderRetryFeedback } from "./retryFeedback.js";
+import { validateReply, type IssueCode, type ReplyInput } from "./validateReply.js";
 
 export type { ReplyInput } from "./validateReply.js";
 
@@ -24,6 +25,7 @@ export type Speak = (text: string) => Promise<Buffer | null>;
 export interface ReplyResult {
   text: string;
   validation: ValidationOutcome;
+  /** Issue codes and precheck kinds from the last rejected draft, for logging only (e.g. "leaks_locked_fact:family-worry"). Never prose. */
   problems: string[];
   audio: Promise<Buffer | null>;
 }
@@ -42,20 +44,26 @@ export async function generateValidatedReply(
 ): Promise<ReplyResult> {
   const baseSystem = buildPatientSystemPrompt(input.patientCase, input.styleId, input.disclosedFactIds);
   const messages = buildPatientMessages(input.turns, input.studentText);
+  // Feedback for the next attempt. Only locally templated lines (renderRetryFeedback) ever reach the patient prompt.
+  let feedback: string[] = [];
   let problems: string[] = [];
+  const reject = (issues: IssueCode[], lockedFactIds: string[], pre: PrecheckIssue[], codes: string[]) => {
+    feedback = renderRetryFeedback(input.patientCase, issues, lockedFactIds, pre);
+    problems = codes;
+  };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const system = problems.length
-      ? `${baseSystem}\n\nYour previous draft was rejected for these reasons. Write a new reply that avoids them:\n${problems.map((p) => `- ${p}`).join("\n")}`
+    const system = feedback.length
+      ? `${baseSystem}\n\nYour previous draft was rejected. Write a new reply that follows these rules:\n${feedback.map((p) => `- ${p}`).join("\n")}`
       : baseSystem;
     const text = sanitizeReply(await deps.patient.text({ purpose: "patient_reply", system, messages }));
     if (!text) {
-      problems = ["The reply was empty."];
+      reject([], [], [], ["empty"]);
       continue;
     }
     const pre = precheckReply(input, text);
     if (pre.length) {
-      problems = redactProblems(input, pre);
+      reject([], [], pre, pre.map((p) => (p.kind === "locked_wording" ? `${p.kind}:${p.factId}` : p.kind)));
       continue;
     }
     // Start speech synthesis while the validator runs; discarded if validation fails.
@@ -63,8 +71,10 @@ export async function generateValidatedReply(
     const verdict = await validateReply(deps.validator, input, text);
     if (verdict.ok) return { text, validation: attempt === 1 ? "passed" : "regenerated", problems: [], audio };
     audio.catch(() => {}); // audio for a rejected draft is discarded; keep a misbehaving speak from going unhandled
-    const reasons = verdict.problems.length ? verdict.problems : ["The reviewer rejected the reply."];
-    problems = redactProblems(input, reasons);
+    const codes = verdict.issues.flatMap((i) =>
+      i === "leaks_locked_fact" && verdict.lockedFactIds.length ? verdict.lockedFactIds.map((id) => `${i}:${id}`) : [i],
+    );
+    reject(verdict.issues, verdict.lockedFactIds, [], codes.length ? codes : ["unspecified"]);
   }
 
   const text = fallbackReply(input.turns.length);
