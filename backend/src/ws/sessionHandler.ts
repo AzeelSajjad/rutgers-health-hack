@@ -136,20 +136,24 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
           finished = true;
           send({ type: "caption_done" });
         };
-        const stream: CaptionStream = deps.stt.start(
-          (text, isFinal) => {
-            if (live()) send({ type: "caption", text, isFinal });
-          },
-          finish,
-          (err) => {
-            deps.log?.("speech recognition failed", err);
-            if (caption === stream) caption = null;
-            if (!live()) return;
-            fail("Speech recognition stopped. Please try again or type your question.");
-            finish();
-          },
-        );
-        caption = stream;
+        try {
+          const stream: CaptionStream = deps.stt.start(
+            (text, isFinal) => {
+              if (live()) send({ type: "caption", text, isFinal });
+            },
+            finish,
+            (err) => {
+              deps.log?.("speech recognition failed", err);
+              if (caption === stream) caption = null;
+              if (!live()) return;
+              fail("Speech recognition stopped. Please try again or type your question.");
+              finish();
+            },
+          );
+          caption = stream;
+        } catch (err) {
+          failFrom(err);
+        }
         return;
       }
 

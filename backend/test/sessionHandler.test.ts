@@ -167,6 +167,16 @@ describe("session handler", () => {
     expect(sent.filter((m) => m.type === "error")).toHaveLength(1);
   });
 
+  it("a throwing stt.start on caption_start sends an error instead of rejecting", async () => {
+    const { handler, sent, stt } = setup();
+    await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    sent.length = 0;
+    stt.failStart = true;
+    await expect(handler.onMessage(json({ type: "caption_start" }))).resolves.toBeUndefined();
+    expect(sent).toEqual([{ type: "error", message: "Something went wrong. Please try again." }]);
+    expect(() => handler.onAudio(Buffer.from([1]))).not.toThrow();
+  });
+
   it("audio before caption_start is ignored", () => {
     const { handler, stt } = setup();
     expect(() => handler.onAudio(Buffer.from([1]))).not.toThrow();

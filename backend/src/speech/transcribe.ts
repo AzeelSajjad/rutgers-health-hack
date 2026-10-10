@@ -54,11 +54,26 @@ export class TranscribeStt implements Stt {
   start(onCaption: CaptionHandler, onDone: () => void, onError: (err: unknown) => void): CaptionStream {
     const queue = new ChunkQueue();
     let stopped = false;
-    this.run(queue, onCaption).then(onDone, (err) => {
-      queue.end();
-      if (stopped) onDone();
-      else onError(err);
-    });
+    // A throwing callback must never surface as an unhandled rejection (it would crash the process).
+    const safe =
+      <A extends unknown[]>(fn: (...args: A) => void) =>
+      (...args: A) => {
+        try {
+          fn(...args);
+        } catch {
+          /* ignore: callback failures are the caller's concern */
+        }
+      };
+    const caption = safe(onCaption);
+    const done = safe(onDone);
+    const error = safe(onError);
+    this.run(queue, caption)
+      .then(done, (err) => {
+        queue.end();
+        if (stopped) done();
+        else error(err);
+      })
+      .catch(() => {});
     return {
       push: (chunk) => queue.push(chunk),
       end: () => {

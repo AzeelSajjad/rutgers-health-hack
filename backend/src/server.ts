@@ -31,8 +31,15 @@ wss.on("connection", (ws) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m));
   });
   ws.on("message", (data, isBinary) => {
-    if (isBinary) handler.onAudio(toBuffer(data));
-    else void handler.onMessage(toBuffer(data).toString("utf8"));
+    if (isBinary) {
+      try {
+        handler.onAudio(toBuffer(data));
+      } catch (err) {
+        app.log.error(err);
+      }
+    } else {
+      handler.onMessage(toBuffer(data).toString("utf8")).catch((err: unknown) => app.log.error(err));
+    }
   });
   ws.on("close", handler.onClose);
   ws.on("error", (err) => app.log.error(err));
