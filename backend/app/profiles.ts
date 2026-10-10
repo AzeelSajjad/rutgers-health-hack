@@ -85,7 +85,7 @@ export function validateProfile(profile: unknown): asserts profile is PatientPro
   for (const key of ['background', 'gender', 'race_ethnicity']) requireProfile(isText(identity[key]), `Identity needs ${key}`);
   const avatar = identity.avatar;
   requireProfile(isRecord(avatar), 'Identity needs avatar metadata');
-  requireProfile(['initials', 's3_reference'].includes(String(avatar.type)), 'Unsupported avatar type');
+  requireProfile(typeof avatar.type === 'string' && ['initials', 's3_reference'].includes(avatar.type), 'Unsupported avatar type');
   requireProfile(isText(avatar.initials), 'Avatar needs fallback initials');
   if (avatar.type === 's3_reference') requireProfile(isText(avatar.uri) && /^s3:\/\/[^/]+\/.+/.test(avatar.uri), 'Avatar needs an S3 image reference');
   for (const key of ['title', 'summary', 'opening_statement']) requireProfile(isText(profile[key]), `Profile needs ${key}`);
@@ -97,7 +97,7 @@ export function validateProfile(profile: unknown): asserts profile is PatientPro
   for (const source of profile.sources) {
     requireProfile(isRecord(source), 'Source must be an object');
     requireProfile(isText(source.id) && !sourceIds.has(source.id), 'Source ids must be nonempty and unique');
-    requireProfile(['simulation_design', 'research_reference', 'provided_csv'].includes(String(source.kind)), 'Unsupported source kind');
+    requireProfile(typeof source.kind === 'string' && ['simulation_design', 'research_reference', 'provided_csv'].includes(source.kind), 'Unsupported source kind');
     requireProfile(isText(source.description), 'Source needs a description');
     sourceIds.add(source.id);
   }
@@ -107,14 +107,14 @@ export function validateProfile(profile: unknown): asserts profile is PatientPro
     requireProfile(isRecord(fact), 'Fact must be an object');
     requireProfile(isText(fact.id) && !factIds.has(fact.id), 'Fact ids must be nonempty and unique');
     requireProfile(isText(fact.text), 'Fact needs text');
-    requireProfile(['initial', 'on_question'].includes(String(fact.visibility)), 'Unsupported fact visibility');
+    requireProfile(typeof fact.visibility === 'string' && ['initial', 'on_question'].includes(fact.visibility), 'Unsupported fact visibility');
     requireProfile(textList(fact.topics), 'Fact needs question topics');
     requireProfile(isText(fact.source_id) && sourceIds.has(fact.source_id), 'Fact references an unknown source');
     factIds.add(fact.id);
   }
   const provenance = profile.provenance;
   requireProfile(isRecord(provenance) && provenance.case_origin === 'faculty_provided_sample', 'This library requires faculty-provided sample provenance');
-  requireProfile(['not_reviewed', 'reviewed'].includes(String(provenance.clinical_review_status)), 'Profile needs a clinical review status');
+  requireProfile(typeof provenance.clinical_review_status === 'string' && ['not_reviewed', 'reviewed'].includes(provenance.clinical_review_status), 'Profile needs a clinical review status');
   requireProfile(isText(provenance.dataset_usage) && isText(provenance.source_filename), 'Profile needs dataset usage and source filename');
   requireProfile(isRecord(profile.source_record) && Object.values(profile.source_record).every(v => typeof v === 'string'), 'Profile needs a string-valued source record');
 }
