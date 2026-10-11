@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+*.log
+.superpowers/
 .env.*
 !.env.example
 backend/work/

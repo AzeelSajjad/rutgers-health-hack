@@ -1,1 +1,0 @@
-Test-only source snapshots from this repository’s encounter engine at commit `2e5190efba0c809e36c3b46e0373687a863d0812`. These exercise the actual schema and prompt builder without installing or importing the unmerged backend. They are not shipped in the browser or used by the app. Refresh from the engine when its contract changes.
