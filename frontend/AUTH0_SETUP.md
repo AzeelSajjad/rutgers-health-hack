@@ -13,7 +13,8 @@ The hosted signup form and required profile fields are configured as described b
 1. In Auth0, create or select an **Application** with type **Single Page Application**.
 2. Add the exact CaseCoach origin to **Allowed Callback URLs**, **Allowed Logout URLs**, and **Allowed Web Origins**. For local React development, use `http://localhost:5173` in each field.
 3. Set the public tenant domain and SPA client ID in `public/auth-config.js`, or use `VITE_AUTH0_DOMAIN` and `VITE_AUTH0_CLIENT_ID` in `frontend/.env`. The Auth0 SDK is installed through npm and bundled with React; no CDN SDK script is needed.
-4. Serve the `frontend` directory over HTTP and reload the page. For deployment, add the deployed HTTPS origin to all three allowlists too.
+4. Register/select a custom Auth0 API using RS256 signing. Set its Identifier as `VITE_AUTH0_AUDIENCE` in `frontend/.env` and the matching `AUTH0_AUDIENCE` on the backend. Set backend `AUTH0_ISSUER_BASE_URL` to the tenant HTTPS URL with a trailing slash (or use `AUTH0_DOMAIN`). The SPA requests an access token for this API; an ID token or opaque `/userinfo` token is not sufficient.
+5. Run the Vite development server with `npm run dev --workspace frontend` from the repository root. For deployment, build with `npm run build --workspace frontend`, serve `frontend/dist` over HTTPS, proxy `/ws` to the backend, and add the deployed HTTPS origin to all three Auth0 allowlists and backend `ALLOWED_ORIGINS`.
 
 ## Required signup fields and school email
 
@@ -52,11 +53,12 @@ In **Security > Multi-factor Auth**, require MFA for CaseCoach and enable Phone 
 
 ## Local demo behavior
 
-The React landing screen offers an explicitly unauthenticated educational preview. It remains usable if tenant initialization or browser storage fails, and it does not enable live backend encounters. Authenticated entry uses the existing React patient and encounter interface. Authentication in this interface does not by itself protect an API or authorize access to patient data; a connected backend must validate access tokens and enforce its own access rules.
+The React landing screen offers an explicitly unauthenticated educational preview. It remains usable if tenant initialization or browser storage fails, and it does not enable live backend encounters. Authenticated entry requests a fresh SDK access token on each WebSocket connection. The backend verifies signature, issuer, audience and expiry before accepting encounter messages, then enforces session ownership using the verified subject. The token travels in the initial WebSocket authentication frame rather than a URL. Real tenant signup, MFA, callbacks and deployed TLS/proxy behavior still require verification in your configured environment.
 
 ## Auth0 references
 
 - [Vanilla JavaScript SPA quickstart](https://auth0.com/docs/quickstart/spa/vanillajs)
+- [Validate access tokens in an API](https://auth0.com/docs/secure/tokens/access-tokens/validate-access-tokens)
 - [Flexible identifiers and attributes](https://auth0.com/docs/authenticate/database-connections/activate-and-configure-attributes-for-flexible-identifiers)
 - [Custom fields on Universal Login signup](https://support.auth0.com/center/s/article/How-to-configure-additional-signup-fields-on-the-Universal-Login-Page)
 - [Validate and store signup data with an Action](https://auth0.com/docs/customize/actions/actions-unit-test)

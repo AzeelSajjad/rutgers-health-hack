@@ -1,11 +1,12 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import type { EncounterState } from "@casecoach/shared";
+import type { EncounterState, PatientCase } from "@casecoach/shared";
+import { SessionStorage } from "../../app/sessions.js";
 
 export interface SessionStore {
-  create(s: EncounterState): Promise<void>;
+  create(s: EncounterState, patientCase?: PatientCase): Promise<void>;
   get(id: string): Promise<EncounterState | null>;
   save(s: EncounterState): Promise<void>;
+  getPatientCase?(id: string): Promise<PatientCase | null>;
+  finalizePending?(id: string): Promise<void>;
 }
 
 export class InMemorySessionStore implements SessionStore {
@@ -27,27 +28,26 @@ export class InMemorySessionStore implements SessionStore {
 }
 
 export class DynamoSessionStore implements SessionStore {
-  private readonly doc: DynamoDBDocumentClient;
-
-  constructor(region: string, private readonly table: string) {
-    // Optional Turn fields are often undefined; DynamoDB rejects undefined attribute values unless removed.
-    this.doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), {
-      marshallOptions: { removeUndefinedValues: true },
-    });
+  constructor(region: string, table: string, bucket: string, private readonly storage = new SessionStorage({ region, tableName: table, bucketName: bucket })) {
   }
-
-  async create(s: EncounterState): Promise<void> {
-    await this.doc.send(
-      new PutCommand({ TableName: this.table, Item: s, ConditionExpression: "attribute_not_exists(sessionId)" }),
-    );
+  async create(s: EncounterState, patientCase?: PatientCase): Promise<void> {
+    if (!patientCase) throw new Error("The validated patient case is required for durable encounters");
+    await this.storage.createEncounter(s, patientCase);
   }
 
   async get(id: string): Promise<EncounterState | null> {
-    const res = await this.doc.send(new GetCommand({ TableName: this.table, Key: { sessionId: id }, ConsistentRead: true }));
-    return (res.Item as EncounterState | undefined) ?? null;
+    const row = await this.storage.readEncounterRecord(id);
+    if (!row?.encounter_state) return null;
+    return { ...row.encounter_state, revision: row.revision, ownerSub: row.owner_sub, status: row.status === "active" ? "active" : "ended" };
   }
-
+  async getPatientCase(id: string): Promise<PatientCase | null> {
+    return (await this.storage.readEncounterRecord(id))?.encounter_case ?? null;
+  }
+  async finalizePending(id: string): Promise<void> {
+    const row = await this.storage.readEncounterRecord(id);
+    if (row?.status === 'archiving') await this.storage.finishSession({ subject: row.owner_sub, role: 'student' }, id);
+  }
   async save(s: EncounterState): Promise<void> {
-    await this.doc.send(new PutCommand({ TableName: this.table, Item: s }));
+    await this.storage.saveEncounter(s);
   }
 }
