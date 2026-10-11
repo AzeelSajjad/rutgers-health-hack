@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { PatientLibrary } from "./library/PatientLibrary";
-import { PracticePage } from "./practice/PracticePage";
+import { AuthApp } from "./auth/AuthApp";
+import "./experience/styles.css";
 
-createRoot(document.getElementById("root")!).render(location.pathname === "/practice" ? <PracticePage /> : <PatientLibrary />);
+createRoot(document.getElementById("root")!).render(<AuthApp />);

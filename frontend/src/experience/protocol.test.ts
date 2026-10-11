@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { appendTurns, parseServerEvent } from './protocol';
@@ -21,7 +21,7 @@ test('transcript upserts replayed turns and sorts by backend index', () => {
 test('both selectable patients map to independently authored backend cases', () => {
   assert.equal(new Set(patients.map(p => p.caseId)).size, 2);
   for (const patient of patients) {
-    const source = JSON.parse(readFileSync(new URL(`../../../backend/experience-cases/${patient.caseId}.json`, import.meta.url), 'utf8'));
+    const source = JSON.parse(readFileSync(new URL(`../../../backend/cases/${patient.caseId}.json`, import.meta.url), 'utf8'));
     assert.equal(source.id, patient.caseId);
     assert.equal(source.patientName, patient.name);
     assert.equal(source.age, patient.age);

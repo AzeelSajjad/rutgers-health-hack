@@ -1,4 +1,4 @@
 import {defineConfig, mergeConfig} from 'vitest/config';
 import viteConfig from './vite.config';
-// The separate avatar-experience package uses node:test and owns its own runner.
+// All frontend suites run in the unified React workspace.
 export default mergeConfig(viteConfig, defineConfig({test:{include:['src/**/*.test.{ts,tsx}']}}));

@@ -9,6 +9,7 @@ import {buildDemoCases,parseTable,type DemoTables} from '../src/imports/mimicDem
 import {FileCaseRepository} from '../src/cases/caseRepository.js';
 import {registerCatalogRoute} from '../src/cases/catalogRoute.js';
 import {createSessionHandler} from '../src/ws/sessionHandler.js';
+import {startEncounter,getActiveEncounter,runTurn} from '../src/engine/encounter.js';
 import {createFakeDeps} from '../src/fake/fakeDeps.js';
 import type {ServerMessage} from '@casecoach/shared';
 function tables():DemoTables{return {
@@ -58,7 +59,7 @@ describe('case catalog and encounter integration',()=>{
     const app=Fastify();
     try{
       const patient=buildDemoCases(tables())[0];await writeFile(join(dir,patient.id+'.json'),JSON.stringify(patient));
-      const repo=new FileCaseRepository([fileURLToPath(new URL('../experience-cases/',import.meta.url)),fileURLToPath(new URL('../cases/',import.meta.url)),dir]);
+      const repo=new FileCaseRepository([fileURLToPath(new URL('../cases/',import.meta.url)),fileURLToPath(new URL('../cases/',import.meta.url)),dir]);
       const cards=await repo.listCards();expect(cards).toHaveLength(3);expect(cards.slice(0,2).map(c=>c.name)).toEqual(['Wyatt Nelson','Yvette Armstrong']);
       expect(cards[2].id).toBe(patient.id);
       const publicJson=JSON.stringify(cards);for(const privateValue of ['sourceSubjectId','sourceAdmissionId','Synthetic fixture diagnosis','persona','facts'])expect(publicJson).not.toContain(privateValue);
@@ -76,7 +77,7 @@ describe('case catalog and encounter integration',()=>{
     }finally{await app.close();await rm(dir,{recursive:true,force:true});}
   });
   it('still lists defaults when the optional imported directory does not exist',async()=>{
-    const repo=new FileCaseRepository([fileURLToPath(new URL('../experience-cases/',import.meta.url)),join(tmpdir(),'nonexistent-casecoach-demo-directory')]);
+    const repo=new FileCaseRepository([fileURLToPath(new URL('../cases/',import.meta.url)),join(tmpdir(),'nonexistent-casecoach-demo-directory')]);
     expect((await repo.listCards()).map(card=>card.origin)).toEqual(['default','default']);
   });
 });
@@ -91,9 +92,16 @@ it('generates distinct encounter IDs, avoids consecutive source repeats, and kee
     const repo=new FileCaseRepository([],dir),app=Fastify();registerCatalogRoute(app,repo,new Set(['http://localhost']));
     const first=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
     const second=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
-    expect(first.statusCode).toBe(200);expect(Object.keys(first.json())).toEqual(['caseId']);
+    expect(first.statusCode).toBe(200);expect(Object.keys(first.json()).sort()).toEqual(['caseId','patient']);
+    expect(Object.keys(first.json().patient).sort()).toEqual(['age','name','visitReason']);
     const a=await repo.get(first.json().caseId),b=await repo.get(second.json().caseId);
     expect(a!.patientName).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);expect(a!.patientName).not.toBe('New practice patient');expect((await repo.get(a!.id))!.patientName).toBe(a!.patientName);
+    const deps=createFakeDeps(repo), encounter=await startEncounter(deps,a!.id);
+    for(let i=0;i<200;i++)await repo.generateRandom();
+    expect(await repo.get(a!.id)).toBeNull();
+    const resumed=await getActiveEncounter(deps,encounter.state.sessionId);
+    expect(resumed.patientCase.patientName).toBe(a!.patientName);
+    expect((await runTurn(deps,encounter.state.sessionId,'What is your hospital history?')).patientCase.id).toBe(a!.id);
     expect(a!.id).not.toBe(b!.id);expect(a!.caseOrigin!.sourceSubjectId).not.toBe(b!.caseOrigin!.sourceSubjectId);
     expect((await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'https://bad.example'}})).statusCode).toBe(403);
     await app.close();

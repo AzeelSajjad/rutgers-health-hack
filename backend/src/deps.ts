@@ -11,7 +11,6 @@ import type { HandlerDeps } from "./ws/sessionHandler.js";
 
 export function createDeps(): HandlerDeps {
   const cases = new FileCaseRepository([
-    fileURLToPath(new URL("../experience-cases", import.meta.url)),
     fileURLToPath(new URL("../cases", import.meta.url)),
     fileURLToPath(new URL("../work/mimic-demo/cases", import.meta.url)),
   ], fileURLToPath(new URL("../work/mimic-demo/source", import.meta.url)));

@@ -9,7 +9,7 @@ export function registerCatalogRoute(app: FastifyInstance, cases: CaseRepository
     if(!cases.generateRandom)return reply.code(503).send({error:'Random patients unavailable'});
     try {
       const patient=await cases.generateRandom();
-      return {caseId:patient.id};
+      return {caseId:patient.id, patient:{name:patient.patientName,age:patient.age,visitReason:patient.visitReason}};
     } catch {
       return reply.code(503).send({error:'Random patients are unavailable. Run the MIMIC demo import first.'});
     }

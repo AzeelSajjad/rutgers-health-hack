@@ -22,7 +22,7 @@ In another Terminal:
 npm run dev --workspace frontend
 ```
 
-Open http://localhost:5173. The case library shows two defaults and five additional cases. Select one to open `/practice?case=<id>`, which starts the existing conversation engine with that case. For a test without AWS, prefix the backend command with `FAKE_AWS=1`; this mode uses scripted replies and no speech audio. Live AI uses the team's existing AWS setup and credentials.
+Open http://localhost:5173. Sign in to the unified CaseCoach frontend. The avatar patient library keeps Wyatt and Yvette and offers Generate random patient. Select it, then Begin conversation. Auth0 remains the entry point; this feature does not replace sign-in routing. For a test without AWS, prefix the backend command with `FAKE_AWS=1`; this mode uses scripted replies and no speech audio. Live AI uses the team's existing AWS setup and credentials.
 
 Downloaded CSVs and generated cases stay in ignored `backend/work/mimic-demo/`. They are not in GitHub. Every teammate/server must run the import once; generation never runs automatically at app startup. The library still works with only defaults if this directory is absent. `--limit` accepts 1–20, with one eligible stay per patient. It can produce fewer when insufficient eligible records exist.
 
@@ -59,6 +59,6 @@ These are record-grounded practice drafts. They do not reconstruct actual patien
 
 ## Random patient option
 
-The library keeps the two defaults and offers **Generate random patient**. POST `/api/cases/random` reads the downloaded demo source tables, selects a random eligible record (avoiding the immediately previous record), builds a new case with a unique encounter ID, and returns only `{caseId}`. The browser opens `/practice?case=...`. No source identifiers or hidden facts are returned to the selection page. The source download is reused; each click does not fetch PhysioNet again.
+The library keeps the two defaults and offers **Generate random patient**. POST `/api/cases/random` returns an allowlisted case ID and patient name/age/visit reason, then the avatar screen uses that ID to start an encounter. The endpoint reads the downloaded demo source tables, selects a random eligible record (avoiding the immediately previous record), builds a new case with a unique encounter ID, and returns `{caseId, patient: {name, age, visitReason}}`. No source identifiers or hidden facts are returned to the selection page. The source download is reused; each click does not fetch PhysioNet again.
 
-Generated cases are held in backend memory (up to 200) and disappear after a restart. This prototype requires the encounter and generation requests to reach the same backend instance. Repeated records can occur across the finite demo cohort. The importer must be run once on each backend deployment; its five prebuilt files are no longer displayed as selection options.
+Generated selection cases are held in backend memory (up to 200). Each started encounter pins its case snapshot in session storage, so eviction of a selection case cannot interrupt an active encounter or resume. In-memory sessions disappear after a restart. This prototype requires the encounter and generation requests to reach the same backend instance. Repeated records can occur across the finite demo cohort. The importer must be run once on each backend deployment; its five prebuilt files are no longer displayed as selection options.
