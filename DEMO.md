@@ -51,7 +51,7 @@ use; the explicit development token is accepted only by a loopback test harness.
 
 ## Verified on this branch
 
-`npm test`: 261 passing tests, with 14 live AI evaluations skipped.
+`npm test`: 262 passing tests, with 14 live AI evaluations skipped.
 `npm run typecheck` and `npm run build --workspace frontend` pass.
 Tests cover Auth0 token validation, cross-user session denial, private archival,
 archive retries, caption review/recovery, default case disclosure and generated
@@ -82,3 +82,6 @@ completion, exchanges, reconnect/transcript recovery, and ending for Wyatt,
 Yvette and one generated patient. It is restricted to loopback and uses the
 explicit development identity; it does not change the browser sign-in flow.
 The UI's unauthenticated preview can be opened manually at the same address.
+
+For branch ancestry, merge conflicts, component wiring and test limits, see
+[the integration audit](docs/demo-integration-audit.md).

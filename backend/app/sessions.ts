@@ -2,7 +2,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import type { EncounterState, PatientCase } from '@casecoach/shared';
+import { PatientCaseSchema, type EncounterState, type PatientCase } from '@casecoach/shared';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { loadPatientProfile, type PatientProfile } from './profiles.js';
 
@@ -19,10 +19,12 @@ export interface SessionMetadata {
   created_at: string;
   updated_at: string;
 }
+export type GeneratedPatientSnapshot = PatientCase & { schema_version: 1; kind: 'generated'; version: 1 };
+export type StoredPatientSnapshot = PatientProfile | GeneratedPatientSnapshot;
 interface SessionRecord extends SessionMetadata {
   pk: string; sk: 'META';
   list_pk: 'SESSIONS'; list_sk: string;
-  profile_snapshot: PatientProfile;
+  profile_snapshot: StoredPatientSnapshot;
   disclosed_fact_ids: string[];
   archive_key?: string;
   archive_version?: string;
@@ -74,7 +76,10 @@ export class SessionStorage {
   async createEncounter(state: EncounterState, patientCase: PatientCase): Promise<void> {
     requireInput(Boolean(state.ownerSub?.trim()), 'A verified encounter owner is required');
     requireInput(state.status === 'active' && state.turns.length === 0 && patientCase.id === state.caseId, 'Invalid initial encounter state');
-    const profile = loadPatientProfile(state.caseId);
+    const validatedCase = PatientCaseSchema.parse(patientCase);
+    const profile: StoredPatientSnapshot = validatedCase.caseOrigin?.kind === 'mimic_iv_demo'
+      ? { ...validatedCase, schema_version: 1, kind: 'generated', version: 1 }
+      : loadPatientProfile(state.caseId);
     const row: SessionRecord = {
       pk: `SESSION#${state.sessionId}`, sk: 'META', list_pk: 'SESSIONS', list_sk: `${state.createdAt}#${state.sessionId}`,
       session_id: state.sessionId, patient_id: state.caseId, patient_version: profile.version,
@@ -138,7 +143,7 @@ export class SessionStorage {
   }
   async getSession(actor: SessionActor, sessionId: string): Promise<SessionMetadata> { return publicMetadata(await this.record(actor, sessionId)); }
   /** Server-only: use this pinned case for conversation and chart projection. */
-  async getEncounterState(actor: SessionActor, sessionId: string): Promise<{ profile: PatientProfile; disclosedFactIds: string[]; revision: number }> {
+  async getEncounterState(actor: SessionActor, sessionId: string): Promise<{ profile: StoredPatientSnapshot; disclosedFactIds: string[]; revision: number }> {
     const record = await this.record(actor, sessionId);
     return { profile: record.profile_snapshot, disclosedFactIds: record.disclosed_fact_ids, revision: record.revision };
   }
