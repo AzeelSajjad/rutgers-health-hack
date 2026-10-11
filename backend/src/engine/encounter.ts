@@ -68,7 +68,7 @@ export async function startEncounter(deps: EngineDeps, caseId: string) {
     turns: [],
     createdAt: nowIso(deps),
   };
-  await deps.sessions.create(state);
+  await deps.sessions.create(state, patientCase);
   return { state, patientCase };
 }
 
@@ -76,7 +76,7 @@ export async function getActiveEncounter(deps: EngineDeps, sessionId: string) {
   const state = await deps.sessions.get(sessionId);
   if (!state) throw new EncounterError("SESSION_NOT_FOUND");
   if (state.status !== "active") throw new EncounterError("SESSION_ENDED");
-  const patientCase = await loadCase(deps, state.caseId);
+  const patientCase = await deps.sessions.getPatientCase?.(sessionId) ?? await loadCase(deps, state.caseId);
   return { state, patientCase };
 }
 

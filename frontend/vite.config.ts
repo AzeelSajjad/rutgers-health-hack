@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: { "/ws": { target: "ws://localhost:3001", ws: true } },
+    proxy: { "/api": { target: process.env.ENCOUNTER_BACKEND_URL || "http://localhost:3001" }, "/ws": { target: (process.env.ENCOUNTER_BACKEND_URL || "http://localhost:3001").replace(/^http/, "ws"), ws: true } },
   },
 });

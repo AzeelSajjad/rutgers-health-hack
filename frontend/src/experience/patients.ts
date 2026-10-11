@@ -1,6 +1,6 @@
 /** Public encounter presentation only. No hidden clinical facts or teaching rules. */
 export interface PatientPresentation {
-  key: 'wyatt' | 'yvette'; caseId: string; name: string; age: number;
+  key: 'wyatt' | 'yvette' | `random-${string}`; caseId: string; name: string; age: number;
   initials: string; visit: string; subtitle: string; accent: string;
   previewOpening: string; prompts: string[];
 }

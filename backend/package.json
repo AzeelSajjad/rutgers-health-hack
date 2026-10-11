@@ -15,7 +15,8 @@
     "eval": "RUN_LIVE_EVALS=1 vitest run evals",
     "import:profiles": "tsx scripts/import-sample-profiles.ts",
     "aws:check": "node --import tsx scripts/check-aws.ts",
-    "aws:deploy": "node --import tsx scripts/deploy-sessions.ts"
+    "aws:deploy": "node --import tsx scripts/deploy-sessions.ts",
+    "import:mimic-demo": "tsx scripts/import-mimic-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.34.4",
