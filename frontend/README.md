@@ -35,8 +35,8 @@ explicit development test identity on loopback, used by local test harnesses;
 the browser's unauthenticated preview remains available. The standalone voice
 sample uses a different protocol and is not the encounter backend.
 
-Vite proxies `/ws` to localhost:3001. By default the browser uses `/ws` on the same
-origin, including `wss` over HTTPS. A deployed host must proxy this WebSocket path.
+Vite proxies `/api` and `/ws` to localhost:3001. By default the browser uses `/ws` on the same
+origin, including `wss` over HTTPS. A deployed host must proxy both `/api` and this WebSocket path.
 An alternate endpoint can be supplied through `VITE_ENCOUNTER_WS_URL`.
 
 ## Landing, authentication and preview
@@ -64,8 +64,9 @@ signature, issuer, audience and expiration and binds storage to the verified
 subject. Another user cannot resume or modify your session. Tokens are never put
 in WebSocket URLs or persisted by the encounter UI. Expired connections close;
 reconnect obtains a fresh SDK token. Keep the origin allowlist configured and serve
-the deployed app over HTTPS/WSS. Faculty access still requires a trusted role and
-separate authorized review routes; choosing faculty signup grants no privilege.
+the deployed app over HTTPS/WSS. Faculty review routes and screens are connected. Access requires the signed
+`review:encounters` RBAC permission or a verified subject in backend
+`FACULTY_SUBJECTS`; choosing faculty signup grants no privilege.
 
 The removed prototype's fictional patients, scripted clinical answers, browser
 progress and static debriefs are not migrated or treated as live patient records.
@@ -86,3 +87,7 @@ caption review, reply timeouts and recovery without crossing patient boundaries.
 The active UI also shows backend-disclosed facts and communication style. Auth0
 tenant login and real microphone/AWS audio still require verification in the
 configured environment.
+
+The patient chart uses the shared validated chart contract and pinned backend
+case values. Chart items are delivered only for disclosed facts, including on
+reconnect. Units are appended once; missing numeric units are explicitly marked.

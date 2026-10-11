@@ -1,5 +1,10 @@
 # CaseCoach voice module
 
+The integrated product runs from the repository root with `npm run demo`. Its
+authenticated encounter backend owns captions, patient audio and sessions. This
+folder is a standalone reference/test prototype; do not run it on port 3001
+alongside the product backend. The React app uses the encounter `/ws` protocol.
+
 Local prototype: microphone -> Amazon Transcribe captions; patient reply text -> Amazon Polly MP3. Patient AI and avatar rendering belong to the other team modules.
 
 ## Run

@@ -11,13 +11,17 @@
     "start": "tsx src/server.ts",
     "test": "vitest run && tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/smoke-turn.ts",
+    "smoke": "tsx scripts/live-demo-check.ts",
     "eval": "RUN_LIVE_EVALS=1 vitest run evals",
     "import:profiles": "tsx scripts/import-sample-profiles.ts",
     "aws:check": "node --import tsx scripts/check-aws.ts",
     "aws:deploy": "node --import tsx scripts/deploy-sessions.ts",
     "import:mimic-demo": "tsx scripts/import-mimic-demo.ts",
-    "demo:check": "tsx scripts/demo-check.ts"
+    "demo:check": "tsx scripts/demo-check.ts",
+    "live:storage": "tsx scripts/live-storage-check.ts",
+    "live:voice": "tsx scripts/live-voice-check.ts",
+    "live:system": "tsx scripts/live-system-check.ts",
+    "configure:auth": "tsx scripts/configure-auth.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.34.4",

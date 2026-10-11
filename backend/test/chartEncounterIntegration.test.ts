@@ -1,0 +1,27 @@
+import {it,expect} from 'vitest';
+import {fileURLToPath} from 'node:url';
+import {FileCaseRepository} from '../src/cases/caseRepository.js';
+import {createFakeDeps} from '../src/fake/fakeDeps.js';
+import {createSessionHandler} from '../src/ws/sessionHandler.js';
+import type {ServerMessage} from '@casecoach/shared';
+it('projects chart measurements from pinned case facts and releases chart items only through encounter disclosure',async()=>{
+  const deps=createFakeDeps(new FileCaseRepository(fileURLToPath(new URL('../cases/',import.meta.url))));
+  const events:ServerMessage[]=[];
+  const handler=createSessionHandler(deps,event=>events.push(event));
+  await handler.onMessage(JSON.stringify({type:'start_session',caseId:'6ca4cbf9-14ef-427c-b87c-bc9d34ce02b8'}));
+  const initial=events.find(event=>event.type==='session_started')!;
+  if(initial.type!=='session_started')throw new Error();
+  expect(initial.chart!.items).toEqual(expect.arrayContaining([expect.objectContaining({value_type:'blood_pressure',display_value:'155/110',unit:'mmHg'})]));
+  expect(JSON.stringify(initial.chart)).not.toMatch(/visibility|topics|confused about sodium/i);
+  const count=initial.chart!.items.length;
+  await handler.onMessage(JSON.stringify({type:'student_turn',text:'Could you tell me about sodium and your understanding?'}));
+  const reply=events.find(event=>event.type==='patient_turn')!;if(reply.type!=='patient_turn')throw new Error();
+  expect(reply.chart!.items.length).toBeGreaterThan(count);
+  expect(reply.chart!.items.every(item=>reply.disclosedFacts.some(fact=>fact.id===item.item_id))).toBe(true);
+  deps.cases={get:async()=>null};handler.onClose();
+  const resumedEvents:ServerMessage[]=[];
+  const resumed=createSessionHandler(deps,event=>resumedEvents.push(event));
+  await resumed.onMessage(JSON.stringify({type:'resume_session',sessionId:initial.sessionId}));
+  const snapshot=resumedEvents[0];if(snapshot.type!=='session_started')throw new Error();
+  expect(snapshot.chart).toEqual(reply.chart);resumed.onClose();
+});

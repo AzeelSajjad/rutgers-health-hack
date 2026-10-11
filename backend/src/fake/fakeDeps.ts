@@ -62,11 +62,13 @@ class ScriptedStt implements Stt {
 
 export function createFakeDeps(cases: CaseRepository): HandlerDeps {
   const llm = new ScriptedLlm();
+  const sessions = new InMemorySessionStore();
   return {
     llm: { analyzer: llm, patient: llm, validator: llm },
     tts: new SilentTts(),
     stt: new ScriptedStt(),
-    sessions: new InMemorySessionStore(),
+    sessions,
+    review: sessions,
     cases,
     log: (msg) => console.log(`[fake] ${msg}`),
   };

@@ -17,11 +17,11 @@ export function readStorageConfig(env: NodeJS.ProcessEnv, warn: (message: string
 
 export const config = {
   port: Number(process.env.PORT ?? 3001),
-  awsRegion: process.env.AWS_REGION ?? "us-east-1",
+  awsRegion: process.env.AWS_REGION ?? "us-west-2",
   models: {
-    analyzer: process.env.ANALYZER_MODEL_ID || "anthropic.claude-haiku-5-5",
-    patient: process.env.PATIENT_MODEL_ID || "anthropic.claude-sonnet-5-5",
-    validator: process.env.VALIDATOR_MODEL_ID || "anthropic.claude-sonnet-5-5",
+    analyzer: process.env.ANALYZER_MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    patient: process.env.PATIENT_MODEL_ID || "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    validator: process.env.VALIDATOR_MODEL_ID || "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
   },
   allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
   fakeAws: process.env.FAKE_AWS === "1",

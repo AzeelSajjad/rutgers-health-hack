@@ -347,3 +347,15 @@ describe('recovering an interrupted encounter end', () => {
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(true);
   });
 });
+
+
+it('renders the backend chart contract and updates it after fact disclosure without inventing units',()=>{
+  const socket=open(false)!;
+  const source={source_id:'csv',filename:'faculty-provided-sample-patient-details.csv',patient_uuid:'4d619156-3250-4212-8399-129f3280fab1',field:'notes'};
+  const chart={schema_version:1,patient_id:source.patient_uuid,patient_version:1,items:[{item_id:'ldl',label:'LDL cholesterol',category:'labs',value_type:'number',value:145,display_value:'145',unit:null,source_reference:source}]};
+  socket.receive({...started,chart});
+  expect(screen.getByLabelText('Patient chart').textContent).toContain('145 (unit not supplied)');
+  question('Tell me more');
+  socket.receive({type:'patient_turn',studentTurn:{index:0,speaker:'student',text:'Tell me more',at:'now'},patientTurn:{index:1,speaker:'patient',text:'Here is another fact',at:'now'},audioBase64:null,styleLabel:'Reserved',disclosedFacts:[],chart:{...chart,items:[...chart.items,{item_id:'diet',label:'Diet preferences',category:'nutrition',value_type:'text',value:'Dislikes vegetables',display_value:'Dislikes vegetables',unit:null,source_reference:source}]}});
+  expect(screen.getByLabelText('Patient chart').textContent).toContain('Dislikes vegetables');
+});

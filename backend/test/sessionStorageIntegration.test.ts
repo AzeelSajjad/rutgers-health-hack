@@ -190,9 +190,9 @@ it('integrates generated-patient HTTP selection, authenticated WebSocket caption
   })[0],id:'random-fixture',patientName:'Alex Reed'};
   let available = true;
   const cases = {get:async (id:string)=>available && id === generated.id ? generated : null, generateRandom:async()=>generated};
-  const app = createEncounterServer({...createFakeDeps(cases),sessions:store}, {
+  const app = createEncounterServer({...createFakeDeps(cases),sessions:store,review:store}, {
     allowedOrigins:['http://localhost:5173'],
-    verifyAccessToken:async token => { if (!['student-a','student-b'].includes(token)) throw new Error(); return {sub:token,expiresAt:Date.now()+60_000}; },
+    verifyAccessToken:async token => { if (!['student-a','student-b','faculty'].includes(token)) throw new Error(); return {sub:token,role:token === 'faculty' ? 'faculty' : 'student',expiresAt:Date.now()+60_000}; },
   });
   const sockets:WebSocket[] = [];
   await app.listen({host:'127.0.0.1',port:0});
@@ -236,6 +236,9 @@ it('integrates generated-patient HTTP selection, authenticated WebSocket caption
     expect(uploads).toHaveLength(1);
     const archive=JSON.parse(await storage.getFacultyTranscript({subject:'faculty',role:'faculty'},started.sessionId));
     expect(archive.profile).toMatchObject({kind:'generated',id:generated.id,caseOrigin:generated.caseOrigin});
+    const reviewed = await app.inject({url:`/api/faculty/sessions/${started.sessionId}/transcript`,headers:{authorization:'Bearer faculty'}});
+    expect(reviewed.statusCode).toBe(200);expect(reviewed.json()).toEqual(archive);
+    expect((await app.inject({url:`/api/faculty/sessions/${started.sessionId}/transcript`,headers:{authorization:'Bearer student-a'}})).statusCode).toBe(403);
     expect(archive.messages.map((message:{text:string})=>message.text)).toEqual([turn.studentTurn.text,turn.patientTurn.text]);
     await expect(storage.getFacultyTranscript({subject:'student-a',role:'student'},started.sessionId)).rejects.toThrow();
   } finally { for(const socket of sockets)socket.terminate();await app.close(); }

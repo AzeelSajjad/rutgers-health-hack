@@ -202,3 +202,42 @@ They do not prove live IAM or the configured Auth0 tenant. Before demoing,
 verify in AWS with two student identities and one faculty identity: deny cross-student
 access, complete a session, read its archive as faculty, deny student archive access,
 and confirm anonymous S3 access fails. No live deployment is claimed until tested.
+
+
+## Connected faculty HTTP API
+
+- `GET /api/me`: verified app role (`student` or `faculty`).
+- `GET /api/faculty/sessions?cursor=...`: all app session metadata, 25 per page.
+- `GET /api/faculty/sessions/:sessionId/transcript`: completed archive JSON read
+  by the backend using its pinned S3 version and checksum.
+
+All routes require a bearer access token. Faculty routes additionally require the
+signed Auth0 `review:encounters` permission or membership in the backend-controlled
+`FACULTY_SUBJECTS` allowlist. Missing/invalid tokens return 401; students return 403;
+unarchived transcripts return 409. The React Faculty review screen uses these
+same endpoints. Cursors are opaque, responses are `no-store`, and S3 remains private.
+
+The Rutgers hackathon stack `casecoach-sessions` was deployed in `us-west-2` and
+its resource names are stored in ignored `work/storage.env` and `backend/.env`.
+Real DynamoDB/S3 operations, versioning, public-access blocking and faculty archive
+reads were checked. Refresh the event CLI profile when its credentials expire.
+For a hosted runtime, attach the emitted least-privilege policy to that runtime's
+execution role; the local hackathon checks used the event's participant profile.
+
+Repeat live checks from the repository root:
+
+```sh
+npm run live:storage --workspace backend
+npm run live:voice --workspace backend
+npm run smoke --workspace backend
+npm run live:system --workspace backend
+```
+
+The storage-only check scripts replies while persisting real AWS sessions. Voice
+checks synthesize educational audio with Polly and transcribe its PCM samples.
+`smoke` runs real Bedrock/Polly exchanges and archives them. `live:system` combines
+HTTP, WebSocket, reviewed Transcribe captions, Bedrock, Polly, reconnect/chart
+recovery, DynamoDB/S3 and protected faculty HTTP reads. It creates short-lived
+RS256 test identities in an isolated loopback server; it does not install an
+Auth0 bypass in the app. Tests create educational encounters retained in the table.
+Real tenant login and physical browser microphone/playback need separate checks.

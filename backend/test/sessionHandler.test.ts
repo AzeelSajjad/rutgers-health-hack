@@ -57,6 +57,7 @@ describe("session handler", () => {
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
     expect(sent[0]).toEqual({
       type: "session_started",
+      chart: { schema_version:1, patient_id:"test-case", patient_version:1, items:[] },
       sessionId: "s1",
       resumed: false,
       patient: { name: "Alex Test", age: 45, visitReason: "Follow-up" },

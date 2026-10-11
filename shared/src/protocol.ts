@@ -64,6 +64,7 @@ export type ServerMessage =
       styleId: string;
       styleLabel: string;
       disclosedFacts: DisclosedFact[];
+      chart?: import("./chart.js").ChartResponse;
       transcript: Turn[];
     }
   | { type: "caption"; text: string; isFinal: boolean }
@@ -77,6 +78,7 @@ export type ServerMessage =
       styleId: string;
       styleLabel: string;
       disclosedFacts: DisclosedFact[];
+      chart?: import("./chart.js").ChartResponse;
     }
   | { type: "session_ended"; sessionId: string }
   /** scope "turn": the error answers a student_turn, so the client stops waiting and restores the question. */

@@ -1,4 +1,4 @@
-import type { AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
+import type { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
 
@@ -20,14 +20,14 @@ export interface LlmRoles {
 
 export class LlmError extends Error {}
 
-// Adaptive thinking is on by default for Sonnet 5.5 / Haiku 5.5; thinking tokens count toward max_tokens.
+// Budget for structured analysis/validation and short patient replies.
 const MAX_TOKENS = 4000;
 
 const refusalDetails = (res: unknown) => JSON.stringify((res as { stop_details?: unknown }).stop_details ?? null);
 
 export class BedrockLlm implements Llm {
   constructor(
-    private readonly client: AnthropicBedrockMantle,
+    private readonly client: AnthropicBedrock,
     private readonly modelId: string,
   ) {}
 
@@ -37,7 +37,7 @@ export class BedrockLlm implements Llm {
       max_tokens: MAX_TOKENS,
       system: args.system,
       messages: [{ role: "user", content: args.user }],
-      output_config: { effort: "low", format: zodOutputFormat(args.schema) },
+      output_config: { format: zodOutputFormat(args.schema) },
     });
     if (res.stop_reason === "refusal") throw new LlmError(`${args.purpose}: model refused ${refusalDetails(res)}`);
     if (res.parsed_output == null) {
@@ -52,7 +52,6 @@ export class BedrockLlm implements Llm {
       max_tokens: MAX_TOKENS,
       system: args.system,
       messages: args.messages,
-      output_config: { effort: "low" },
     });
     if (res.stop_reason === "refusal") throw new LlmError(`${args.purpose}: model refused ${refusalDetails(res)}`);
     const text = res.content

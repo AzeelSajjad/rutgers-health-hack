@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
+import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import { FileCaseRepository } from "./cases/caseRepository.js";
 import { config, readStorageConfig } from "./config.js";
 import { createFakeDeps } from "./fake/fakeDeps.js";
@@ -21,7 +21,7 @@ export function createDeps(): HandlerDeps {
 
   const storageConfig = readStorageConfig(process.env);
   // A stalled call would otherwise hold the session's busy flag for up to 10 minutes per attempt.
-  const client = new AnthropicBedrockMantle({ awsRegion: config.awsRegion, timeout: 20_000, maxRetries: 1 });
+  const client = new AnthropicBedrock({ awsRegion: config.awsRegion, timeout: 20_000, maxRetries: 1 });
   const sessions = new DynamoSessionStore(config.awsRegion, storageConfig.sessionsTable, storageConfig.transcriptBucket);
   return {
     llm: {
@@ -32,6 +32,7 @@ export function createDeps(): HandlerDeps {
     tts: new PollyTts(config.awsRegion),
     stt: new TranscribeStt(config.awsRegion),
     sessions,
+    review: sessions,
     cases,
     log: (msg, err) => console.error(`[engine] ${msg}`, err ?? ""),
   };

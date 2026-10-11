@@ -1,3 +1,4 @@
+import { ChartItemSchema } from "./chart.js";
 import { z } from "zod";
 
 export const CUE_IDS = [
@@ -19,6 +20,7 @@ export const CaseFactSchema = z.object({
   topic: z.string().min(1),
   content: z.string().min(1),
   disclosure: DisclosureSchema,
+  chart: ChartItemSchema.optional(),
 });
 export type CaseFact = z.infer<typeof CaseFactSchema>;
 
@@ -41,6 +43,7 @@ export type StyleTransition = z.infer<typeof StyleTransitionSchema>;
 export const PatientCaseSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
+    profileVersion: z.number().int().positive().optional(),
     patientName: z.string().min(1),
     age: z.number().int().positive(),
     sex: z.enum(["female", "male", "other"]),
@@ -72,6 +75,9 @@ export const PatientCaseSchema = z
           ctx.addIssue({ code: "custom", message: `transition references unknown style "${id}"` });
         }
       }
+    }
+    for (const fact of c.facts) {
+      if (fact.chart && (fact.chart.item_id !== fact.id || fact.chart.source_reference.patient_uuid !== c.id)) ctx.addIssue({code:"custom",message:"Chart item must match its fact and patient"});
     }
     const factIds = c.facts.map((f) => f.id);
     if (new Set(factIds).size !== factIds.length) {

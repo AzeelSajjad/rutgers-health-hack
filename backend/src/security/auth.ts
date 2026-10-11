@@ -1,9 +1,9 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import type { SessionStore } from '../sessions/sessionStore.js';
 
-export interface Identity { sub: string; expiresAt: number }
+export interface Identity { sub: string; expiresAt: number; role?: 'student' | 'faculty' }
 export type TokenVerifier = (token: string, remoteAddress?: string) => Promise<Identity>;
-interface TokenSettings { issuer: string; audience: string }
+interface TokenSettings { issuer: string; audience: string; facultySubjects?: ReadonlySet<string>; facultyPermission?: string }
 
 export function createTokenVerifier(settings: TokenSettings, key?: JWTVerifyGetKey): TokenVerifier {
   const resolver = key ?? createRemoteJWKSet(new URL('.well-known/jwks.json', settings.issuer), { timeoutDuration: 5_000 });
@@ -12,7 +12,9 @@ export function createTokenVerifier(settings: TokenSettings, key?: JWTVerifyGetK
       issuer: settings.issuer, audience: settings.audience, algorithms: ['RS256'], requiredClaims: ['sub', 'exp'],
     });
     if (!payload.sub?.trim() || typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) throw new Error('Invalid access token');
-    return { sub: payload.sub, expiresAt: payload.exp * 1000 };
+    const permission = settings.facultyPermission ?? 'review:encounters';
+    const authorized = settings.facultySubjects?.has(payload.sub) || (Array.isArray(payload.permissions) && payload.permissions.includes(permission));
+    return { sub: payload.sub, expiresAt: payload.exp * 1000, role: authorized ? 'faculty' : 'student' };
   };
 }
 
@@ -34,7 +36,7 @@ export function authSettings(env: NodeJS.ProcessEnv, host: string): { verifyAcce
   const issuer = new URL(configuredIssuer);
   if (issuer.protocol !== 'https:' || issuer.username || issuer.password || issuer.search || issuer.hash) throw new Error('AUTH0 issuer must be an HTTPS URL');
   if (!issuer.pathname.endsWith('/')) issuer.pathname += '/';
-  return { verifyAccessToken: createTokenVerifier({ issuer: issuer.href, audience }) };
+  return { verifyAccessToken: createTokenVerifier({ issuer: issuer.href, audience, facultySubjects: new Set((env.FACULTY_SUBJECTS || '').split(',').map(s => s.trim()).filter(Boolean)), facultyPermission: env.FACULTY_PERMISSION || 'review:encounters' }) };
 }
 
 /** Check the verified identity and expiry before persistence operations; never trust caller-supplied ownership. */

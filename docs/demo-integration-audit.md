@@ -50,29 +50,47 @@ storage despite passing the memory demo. The fix pins a validated generated case
 as an explicitly generated profile snapshot with its original provenance, rather
 than looking it up as a faculty case. Defaults keep their canonical profile snapshots.
 
-## Verification and limits
+## Completed application integrations
 
-- Root suite: 262 tests pass (159 backend Vitest, 38 backend Node, 65 frontend).
-  Fourteen live AI evaluations are skipped.
-- The standalone voice prototype's separate nine tests pass.
+The original audit found faculty routes/screens and live AWS setup unfinished.
+The following are now implemented and verified:
+
+- Protected faculty session listing (25 per page, opaque cursor) and completed
+  transcript reads in the same authenticated HTTP server as student encounters.
+- Faculty permissions derived only from a verified RS256 token's
+  `review:encounters` permissions array or a server-controlled Auth0 subject allowlist.
+  User metadata and signup selections never grant roles.
+- React faculty navigation, session list, refresh/pagination, archive-state handling
+  and transcript display. Every API request receives a fresh SDK access token.
+- Shared runtime chart schema, chart metadata pinned with the encounter case,
+  server disclosure projection, and chart rendering/restoration in the avatar UI.
+- Actual DynamoDB/S3 resources deployed with CloudFormation in `us-west-2`.
+  Public-access blocking, encryption and bucket versioning verified.
+- Bedrock Runtime with the live-verified Haiku/Sonnet 4.5 inference profiles.
+  The prior Mantle/model combination failed live checks and was replaced.
+- One-command paired-server startup and matching Auth0 environment configuration.
+
+## Verification and remaining tenant checks
+
+- Root suite: 270 tests pass (162 backend Vitest, 38 backend Node, 70 frontend).
+  Fourteen optional live AI evaluations remain skipped.
+- Standalone voice prototype: nine tests pass. The app uses the authenticated
+  encounter backend's Transcribe/Polly adapters instead of its separate endpoints.
 - TypeScript checks and the React production build pass.
-- Running Vite/backend smoke test: authenticated selection, PCM captions, patient
-  replies, reconnect/transcript restoration and ending for both defaults and a
-  generated patient; anonymous HTTP/WebSocket requests are denied.
-- The added generated-patient integration test uses the actual WebSocket server,
-  frontend frame validator, engine and durable adapter. It verifies selection,
-  captions, exchange persistence, recovery after catalog removal, cross-user
-  denial, S3 archival and an authorized faculty archive read. External AI/audio
-  and AWS command transports are mocked; no real AWS session is created.
+- Live AWS storage lifecycle for both default patients and a generated case:
+  persistence, owner isolation, S3 archive/version/checksum and faculty reads pass.
+- Real Polly MP3 output for Matthew/Joanna and real Transcribe final captions pass.
+- Real Bedrock analyzer/patient/validator exchanges, Polly audio and durable
+  archival pass for both defaults and a generated patient.
+- The full live-system check uses the actual HTTP/WebSocket server, frontend
+  frame validator, chart contract, Transcribe captions sent back as the reviewed
+  student question, Bedrock, Polly, reconnect, DynamoDB/S3 and protected faculty
+  HTTP reads. All three patient types pass. Student faculty API requests and
+  cross-user reconnects are denied. Test identities are short-lived RS256 JWTs
+  signed only inside an isolated loopback harness; these are not Auth0 tenant users.
 
-`backend/voice` is a standalone prototype included in Git history. The active UI
-uses the authenticated encounter backend's speech adapters, not that prototype's
-`/api/transcribe` and `/api/speech` endpoints. Its passing tests do not establish
-that its own endpoints are wired into the app.
-
-Faculty storage policies/read methods exist, but the application still needs
-faculty review screens/routes and trusted role mapping. Sign-up selection alone
-never grants faculty permissions. Auth0 tenant login and real Bedrock/Transcribe/
-Polly/DynamoDB/S3 calls are not verified by these local tests. Local AWS/storage
-and backend Auth0 environment settings are not configured. Full live end-to-end
-verification requires that configuration.
+Remaining: the Auth0 tenant owner must provide/select the actual API Identifier
+(audience) and assign faculty permissions or approve an Auth0 subject. Hosted login
+and a physical browser microphone/playback check then verify the last browser path.
+AWS profile and storage settings are configured locally; credentials remain outside
+Git. The preview stays available while those Auth0 values are pending.

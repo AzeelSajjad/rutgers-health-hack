@@ -28,7 +28,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('unified landing and authentication', () => {
-  it('requests an API audience from Auth0 and supplies access tokens only when connecting live encounters', async () => {
+  it('requests an API audience from Auth0 and supplies access tokens for verified roles and live encounters', async () => {
     auth.isAuthenticated.mockResolvedValue(true);
     const OriginalWebSocket = window.WebSocket;
     class TestWebSocket {
@@ -47,7 +47,7 @@ describe('unified landing and authentication', () => {
     render(<AuthApp/>);
     await screen.findByText('Choose a patient');
     expect(createAuth0Client).toHaveBeenCalledWith(expect.objectContaining({ authorizationParams: { redirect_uri: window.location.origin, audience: 'https://casecoach.example/api' } }));
-    expect(auth.getTokenSilently).not.toHaveBeenCalled();
+    expect(auth.getTokenSilently).toHaveBeenCalledWith({ detailedResponse: false });
     fireEvent.click(screen.getAllByRole('button', { name: 'Start encounter' })[0]!);
     fireEvent.click(screen.getByRole('button', { name: 'Begin conversation' }));
     await waitFor(() => expect(sockets.length).toBe(1));

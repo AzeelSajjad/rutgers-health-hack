@@ -1,5 +1,5 @@
 import { ClientMessageSchema, type EncounterState, type PatientCase, type ServerMessage } from "@casecoach/shared";
-import { disclosedFactsFor } from "../engine/disclosure.js";
+import { disclosedFactsFor, disclosedChartFor } from "../engine/disclosure.js";
 import {
   EncounterError,
   endEncounter,
@@ -15,6 +15,7 @@ import { withSessionLock } from "./sessionLock.js";
 
 export interface HandlerDeps extends EngineDeps {
   stt: Stt;
+  review?: import("../review/facultyRoutes.js").FacultyReviewStore;
 }
 
 const FRIENDLY: Record<EncounterErrorCode, string> = {
@@ -41,6 +42,7 @@ function sessionStarted(state: EncounterState, c: PatientCase, resumed: boolean)
     styleId: state.styleId,
     styleLabel: styleLabel(c, state.styleId),
     disclosedFacts: disclosedFactsFor(c, state.disclosedFactIds),
+    chart: disclosedChartFor(c, state.disclosedFactIds),
     transcript: state.turns,
   };
 }
@@ -139,6 +141,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
             styleId: r.state.styleId,
             styleLabel: styleLabel(r.patientCase, r.state.styleId),
             disclosedFacts: disclosedFactsFor(r.patientCase, r.state.disclosedFactIds),
+            chart: disclosedChartFor(r.patientCase, r.state.disclosedFactIds),
           });
         } catch (err) {
           failFrom(err, "turn");

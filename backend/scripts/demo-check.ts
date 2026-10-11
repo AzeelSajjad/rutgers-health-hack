@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { serverEvent as ServerMessageSchema, type ServerEvent as ServerMessage } from '../../frontend/src/experience/protocol.js';
 
-const origin = process.env.DEMO_ORIGIN || 'http://127.0.0.1:5174';
+const origin = process.env.DEMO_ORIGIN || 'http://127.0.0.1:5173';
 const url = new URL(origin);
 assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), 'This fixture test must target loopback.');
 const headers = { Authorization: 'Bearer casecoach-local-development', Origin: origin };

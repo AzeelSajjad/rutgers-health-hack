@@ -1,87 +1,89 @@
-# Product demo branch
+# Integrated product demo
 
-`demo` combines main, the corrected avatar branch (PR #6), the corrected random
-MIMIC patient branch (PR #8), and the authentication/storage integration branch.
-The remaining remote feature branches are included through main's merge history.
+`demo` includes every remote branch audited in `docs/demo-integration-audit.md`.
+One React app connects to one authenticated encounter backend. The separate
+`backend/voice` server is a reference prototype and is not started alongside it.
 
-## Start the product
+## Run now: scripted UI preview
 
-Use the Node version in `.nvmrc`. From the repository root:
+From the repository root with the Node version in `.nvmrc`:
 
 ```sh
-git switch demo
 npm ci
-npm run dev --workspace backend
-npm run dev --workspace frontend
+npm run demo -- --preview
 ```
 
-Open http://localhost:5173. Configure the backend from `backend/.env.example`
-and the frontend from `frontend/.env.example`; match the Auth0 issuer/API audience
-on both ends. Use the hackathon's temporary AWS credentials, region, deployed
-DynamoDB table and private S3 bucket as described in `backend/docs/aws-sessions.md`.
-See `frontend/AUTH0_SETUP.md` for hosted sign-in setup.
+Open http://localhost:5173 and choose Preview. This explicit mode uses authored
+responses and memory storage; it does not claim to exercise live AI or faculty
+permissions. Stop the paired servers with Ctrl+C. Use `DEMO_PORT=5174` if needed.
 
-To enable the optional random patients, download and verify the public demo data:
+## Run live AWS encounters and faculty review
+
+The Rutgers event `healthhack` profile is working and the `casecoach-sessions`
+CloudFormation stack is deployed in `us-west-2`. Resource names are configured in
+ignored `backend/.env` and `backend/work/storage.env` on this machine. On a new
+checkout, get the stack outputs with the AWS CLI and configure the table/bucket,
+region and local credential profile from `backend/.env.example`. Do not commit
+credentials. The bucket blocks public access, uses encryption and versioning.
+
+The remaining tenant configuration is the exact Auth0 API **Identifier**:
+Applications → APIs → CaseCoach API → Identifier. Sync it to both workspaces:
+
+```sh
+npm run configure:auth --workspace backend -- --audience 'YOUR_API_IDENTIFIER'
+```
+
+Use the signed `review:encounters` RBAC permission for institution-approved faculty,
+or add an approved Auth0 user subject through `--faculty 'auth0|VERIFIED_USER_ID'`.
+See `frontend/AUTH0_SETUP.md` for the exact dashboard setup and callback origins.
+Passwords, tokens, signup choices and GitHub usernames do not authorize faculty.
+
+Then run both services together:
+
+```sh
+npm run demo
+```
+
+This verifies matching audience settings before startup. It always binds the local
+backend to loopback and starts the React app on the same configured demo port.
+Signed-in students choose Wyatt, Yvette or a generated patient, speak, review/edit
+final captions, and send the question. Responses include patient audio, transcript
+and only backend-disclosed chart items. Reconnect restores the pinned encounter.
+End the encounter and wait for archival acknowledgement; failures can retry.
+
+Verified faculty see **Faculty review** in the sidebar. It lists all encounters
+in this app, supports pagination, and opens completed transcript archives. Active
+or archiving sessions remain unavailable until completion. Each request is
+independently authorized; the browser never gets bucket credentials or S3 URLs.
+
+The public MIMIC-IV demo is already imported locally. On another checkout:
 
 ```sh
 npm run import:mimic-demo --workspace backend -- --limit 20
 ```
 
-The imported files stay local under `backend/work` and are not committed. Default
-Wyatt/Yvette encounters do not need the import. Signed-in users can generate a
-random patient and start the same avatar conversation. Generation requires an
-access token; active encounters retain their case snapshot if the selection cache
-evicts it. Hidden case details are excluded from the patient selection response.
-
-## Demo walkthrough
-
-1. Open the landing page and sign in as a student.
-2. Select Wyatt or Yvette, or generate a random patient after the import.
-3. Begin the live conversation. Speak, stop recording, review/edit the captions,
-   then send the question. Typed questions work as well.
-4. Follow the transcript and facts disclosed by the backend. Reconnect restores
-   the encounter; unsent questions are retained with their original patient.
-5. End the encounter and wait for backend confirmation that archival completed.
-   If storage fails, retry ending; the UI does not accept more questions meanwhile.
-
-Unauthenticated preview is available for a scripted UI demonstration. For local
-transport tests, `FAKE_AWS=1 npm run dev --workspace backend` uses scripted AWS
-fixtures and memory storage. Configure Auth0 on both ends for signed-in browser
-use; the explicit development token is accepted only by a loopback test harness.
-
-## Verified on this branch
-
-`npm test`: 262 passing tests, with 14 live AI evaluations skipped.
-`npm run typecheck` and `npm run build --workspace frontend` pass.
-Tests cover Auth0 token validation, cross-user session denial, private archival,
-archive retries, caption review/recovery, default case disclosure and generated
-case retention. Live Auth0 tenant login and AWS voice/storage calls still require
-the configured hackathon environment. The storage faculty policy requires trusted
-roles; a faculty signup selection alone does not grant access, and faculty review
-screens/routes still need integration.
-
-
-## Repeat the local smoke test
-
-Start the scripted backend and frontend in separate terminals:
+## Repeat verification
 
 ```sh
-FAKE_AWS=1 ALLOWED_ORIGINS=http://127.0.0.1:5174 npm run dev --workspace backend
-npm run dev --workspace frontend -- --host 127.0.0.1 --port 5174 --strictPort
+npm test
+npm run typecheck
+npm run build --workspace frontend
+npm test --prefix backend/voice
+npm run live:storage --workspace backend
+npm run live:voice --workspace backend
+npm run smoke --workspace backend
+npm run live:system --workspace backend
 ```
 
-After importing the public MIMIC demo once, run:
+The root suite has 270 passing tests; the standalone voice prototype has nine.
+Fourteen optional live AI evaluations are skipped. Live integration checks passed
+for Wyatt, Yvette and generated patients through Transcribe, Bedrock Runtime,
+Polly, reconnect/chart recovery, DynamoDB, versioned S3 and protected faculty HTTP
+reads. The isolated live-system check signs short-lived test identities locally;
+it does not change the app's Auth0 verifier or authorize production faculty.
+Checks create educational sessions, which remain available for faculty review.
 
-```sh
-DEMO_ORIGIN=http://127.0.0.1:5174 npm run demo:check --workspace backend
-```
-
-The check uses Vite's actual HTTP/WebSocket proxy and the frontend frame validator.
-It verifies unauthorized rejection, safe patient selection responses, caption
-completion, exchanges, reconnect/transcript recovery, and ending for Wyatt,
-Yvette and one generated patient. It is restricted to loopback and uses the
-explicit development identity; it does not change the browser sign-in flow.
-The UI's unauthenticated preview can be opened manually at the same address.
-
-For branch ancestry, merge conflicts, component wiring and test limits, see
-[the integration audit](docs/demo-integration-audit.md).
+Hosted Auth0 login and a physical browser microphone/speaker test still require
+the tenant API Identifier, faculty authorization and callback configuration. Code
+and AWS service integration are complete; these final tenant/browser checks are
+not represented as already verified.

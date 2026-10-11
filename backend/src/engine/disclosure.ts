@@ -54,3 +54,9 @@ export function disclosedFactsFor(c: PatientCase, ids: string[]): DisclosedFact[
     .filter((f) => wanted.has(f.id))
     .map(({ id, topic, content }) => ({ id, topic, content }));
 }
+
+/** Project only already-disclosed, pinned chart values; callers never choose release IDs. */
+export function disclosedChartFor(c: import("@casecoach/shared").PatientCase, ids: readonly string[]): import("@casecoach/shared").ChartResponse {
+  const released = new Set(ids);
+  return {schema_version:1,patient_id:c.id,patient_version:c.profileVersion??1,items:c.facts.filter(f=>released.has(f.id)).flatMap(f=>f.chart?[structuredClone(f.chart)]:[])};
+}

@@ -1,3 +1,4 @@
+import { registerFacultyRoutes } from './review/facultyRoutes.js';
 import { registerCatalogRoute } from './cases/catalogRoute.js';
 import Fastify, { LogController } from 'fastify';
 import { WebSocketServer, type RawData, type WebSocket, type VerifyClientCallbackSync } from 'ws';
@@ -19,6 +20,7 @@ export function createEncounterServer(deps: HandlerDeps, options: ServerOptions)
   app.get('/health', async () => ({ ok: true }));
   const origins = new Set(options.allowedOrigins);
   registerCatalogRoute(app, deps.cases, origins, options.verifyAccessToken);
+  registerFacultyRoutes(app, options.verifyAccessToken, origins, deps.review);
   const verifyClient: VerifyClientCallbackSync = ({ origin, req }) => origins.has(origin) && req.url === '/ws';
   const wss = new WebSocketServer({
     server: app.server, path: '/ws', maxPayload: 64 * 1024,

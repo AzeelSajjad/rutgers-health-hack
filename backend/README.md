@@ -91,8 +91,8 @@ The source row preserves Yvette's irregular quotation formatting verbatim.
 
 Profiles record `faculty_provided_sample` provenance and `not_reviewed` status:
 we have not independently clinically reviewed the imported cases or asserted that
-the original examples represent real people. No MIMIC, HINTS, or Synthea data is
-used. Numeric educational targets need a separately reviewed reference before
+the original examples represent real people. The two faculty defaults do not use MIMIC, HINTS or Synthea. The optional
+random-patient feature separately uses the public MIMIC-IV demo. Numeric educational targets need a separately reviewed reference before
 being added to an encounter's knowledge base.
 
 ## Later customization
@@ -110,3 +110,9 @@ explanation are in `docs/aws-sessions.md`. Run `npm run aws:check` to check your
 AWS login. Authentication and HTTP routes remain in the existing backend.
 
 Additional public-demo patient import: see [docs/mimic-demo.md](docs/mimic-demo.md).
+
+Faculty review endpoints are registered in the same authenticated server as the
+encounter WebSocket. The active frontend renders their session list and transcripts;
+see `../frontend/AUTH0_SETUP.md` for trusted role configuration. Real mode uses
+Bedrock Runtime with the verified Haiku/Sonnet 4.5 inference profiles in
+`src/config.ts`; model overrides must be valid for that endpoint.

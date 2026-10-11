@@ -27,3 +27,5 @@
 .disclosed-information ul { list-style: none; padding: 0; margin: 14px 0 0; }
 .disclosed-information li + li { margin-top: 14px; }
 .disclosed-information small { color: #74877b; font-size: 11px; }
+
+.chart-item{border-bottom:1px solid #dce8df;padding:12px 0}.chart-item dt{font-weight:650}.chart-item dd{margin:5px 0;line-height:1.5}.chart-item small{color:#71857a;overflow-wrap:anywhere}
