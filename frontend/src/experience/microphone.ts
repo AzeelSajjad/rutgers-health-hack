@@ -1,6 +1,14 @@
 import workletUrl from './encounter-pcm.ts?worker&url';
 
 export interface MicrophoneCapture { finish(): void; cancel(): void }
+export function microphoneErrorMessage(error: unknown): string {
+  const name = error instanceof Error ? error.name : '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'Microphone access was blocked. Allow the microphone for this site in your browser and in macOS System Settings → Privacy & Security → Microphone, then try again.';
+  if (name === 'NotFoundError') return 'No microphone was found. Connect a microphone or select an input device in macOS Sound settings.';
+  if (name === 'NotReadableError') return 'The microphone could not be opened. Check your input device and close other apps using it, then try again.';
+  if (error instanceof Error && /capture|rate|AudioWorklet/.test(error.message)) return error.message;
+  return 'The microphone could not start. Check browser permission, or type your question.';
+}
 /** The encounter engine expects mono PCM at exactly 16 kHz. */
 export async function captureMicrophone(onChunk: (chunk: ArrayBuffer) => void, onFinished: () => void, signal: AbortSignal): Promise<MicrophoneCapture> {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone capture is unavailable. You can type your question instead.');

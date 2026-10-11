@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { captureMicrophone } from './microphone';
-vi.mock('./microphone', () => ({ captureMicrophone: vi.fn() }));
+vi.mock('./microphone', async importOriginal => ({ ...await importOriginal<typeof import('./microphone')>(), captureMicrophone: vi.fn() }));
 
 class Socket {
   static OPEN = 1;

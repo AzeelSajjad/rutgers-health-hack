@@ -6,7 +6,7 @@ import { RandomPatientCard } from '../library/RandomPatientCard';
 import { Avatar } from './Avatar';
 import { patients, previewReply, type PatientPresentation } from './patients';
 import { appendTurns, parseServerEvent, type ConversationTurn, type DisclosedFact } from './protocol';
-import { captureMicrophone, type MicrophoneCapture } from './microphone';
+import { captureMicrophone, microphoneErrorMessage, type MicrophoneCapture } from './microphone';
 
 type Phase = 'idle' | 'connecting' | 'ready' | 'recording' | 'finishing' | 'thinking' | 'speaking' | 'disconnected' | 'ended';
 type SpeechResult = { isFinal: boolean; 0: { transcript: string } };
@@ -307,7 +307,7 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
       }, () => { if (gen === generation.current && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'caption_stop' })); }, controller.signal);
       if (gen !== generation.current || controller.signal.aborted) { capture.cancel(); return; }
       mic.current = capture; captionState.current = 'recording'; socket.send(JSON.stringify({ type: 'caption_start' })); ready = true; setPhase('recording');
-    } catch { if (gen === generation.current) { setPhase('ready'); setError('The microphone could not start. Check browser permission, or type your question.'); } }
+    } catch (error) { if (gen === generation.current) { setPhase('ready'); setError(microphoneErrorMessage(error)); } }
   };
   const finish = () => {
     if (phase !== 'ready' && phase !== 'speaking') return;

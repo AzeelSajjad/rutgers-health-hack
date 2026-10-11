@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 const {values}=parseArgs({options:{audience:{type:'string'},faculty:{type:'string'},issuer:{type:'string',default:'https://dev-ytzdso55lpgvuxwq.us.auth0.com/'}}});
 if(!values.audience?.trim() || /[\r\n]/.test(values.audience) || values.audience.length>2048)throw new Error('Provide the exact Auth0 API Identifier using --audience.');
+if (/^https:\/\/[^/]+\/api\/v2\/?$/i.test(values.audience.trim())) throw new Error('This is the Auth0 Management API. Create or select the CaseCoach custom API in Applications → APIs and use its Identifier instead.');
 const issuer=new URL(values.issuer!);
 if(issuer.protocol!=='https:' || issuer.username || issuer.password || issuer.search || issuer.hash || issuer.pathname!=='/')throw new Error('Use the Auth0 tenant HTTPS origin with a trailing slash.');
 if(values.faculty && !values.faculty.split(',').every(id=>/^[a-zA-Z0-9_-]+\|[^\s,=]+$/.test(id)))throw new Error('Faculty IDs must be Auth0 user subjects, not usernames.');

@@ -83,6 +83,12 @@ Auth0 user IDs in `FACULTY_SUBJECTS`. These IDs come from User Management → Us
 
 Copy the API **Identifier** from Applications → APIs → your API. Synchronize it:
 
+Use a custom API for CaseCoach. The built-in `https://TENANT/api/v2/` Identifier
+belongs to the Auth0 Management API and is not the audience for encounter requests.
+If CaseCoach does not have an API yet, create one under Applications → APIs →
+Create API, name it CaseCoach, choose an Identifier such as `https://casecoach-api`,
+and use RS256. The Identifier is a label and does not need to serve a website.
+
 ```sh
 npm run configure:auth --workspace backend -- --audience 'YOUR_API_IDENTIFIER' --faculty 'auth0|YOUR_APPROVED_USER_ID'
 ```
