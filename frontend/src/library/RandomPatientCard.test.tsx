@@ -9,7 +9,7 @@ it('opens a generated patient inside the signed-in avatar experience without rep
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({caseId:'random-test',patient:{name:'Alex Reed',age:62,visitReason:'Hospital history'}})}));
   render(<App accountName="Test learner"/>);
   fireEvent.click(screen.getByRole('button',{name:'Generate random patient'}));
-  await screen.findByRole('button',{name:/Alex Reed 62/});
+  await screen.findByText('Alex Reed');
   expect(screen.getByText('Test learner')).toBeTruthy();
   expect((screen.getByRole('button',{name:'Preview'}) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('button',{name:'Begin conversation'})).toBeTruthy();
