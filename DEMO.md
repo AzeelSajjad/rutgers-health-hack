@@ -59,3 +59,26 @@ case retention. Live Auth0 tenant login and AWS voice/storage calls still requir
 the configured hackathon environment. The storage faculty policy requires trusted
 roles; a faculty signup selection alone does not grant access, and faculty review
 screens/routes still need integration.
+
+
+## Repeat the local smoke test
+
+Start the scripted backend and frontend in separate terminals:
+
+```sh
+FAKE_AWS=1 ALLOWED_ORIGINS=http://127.0.0.1:5174 npm run dev --workspace backend
+npm run dev --workspace frontend -- --host 127.0.0.1 --port 5174 --strictPort
+```
+
+After importing the public MIMIC demo once, run:
+
+```sh
+DEMO_ORIGIN=http://127.0.0.1:5174 npm run demo:check --workspace backend
+```
+
+The check uses Vite's actual HTTP/WebSocket proxy and the frontend frame validator.
+It verifies unauthorized rejection, safe patient selection responses, caption
+completion, exchanges, reconnect/transcript recovery, and ending for Wyatt,
+Yvette and one generated patient. It is restricted to loopback and uses the
+explicit development identity; it does not change the browser sign-in flow.
+The UI's unauthenticated preview can be opened manually at the same address.
