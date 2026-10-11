@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { createAuth0Client, type Auth0Client, type User } from '@auth0/auth0-spa-js';
+import { createAuth0Client, Auth0Client, type User } from '@auth0/auth0-spa-js';
+import { authErrorMessage } from './errors';
 import { getAuthConfig } from './config';
 import { LandingPage } from './LandingPage';
 import './landing.css';
@@ -14,7 +15,10 @@ export function AuthApp() {
   const [localDemo] = useState(localDemoEnabled);
   const [config] = useState(() => localDemo ? null : getAuthConfig());
   const [viewer, setViewer] = useState<{ name: string; preview: boolean } | null>(null);
-  const [busy, setBusy] = useState(Boolean(config));
+  const [busy, setBusy] = useState(() => {
+    const params=new URLSearchParams(window.location.search);
+    return Boolean(config && params.has('state') && (params.has('code') || params.has('error')));
+  });
   const [logoutFailed, setLogoutFailed] = useState(false);
   const [status, setStatus] = useState(config ? 'Connecting securely to Auth0…' : 'Sign in is not configured. You can explore the educational preview.');
   const client = useRef<Auth0Client | null>(null);
@@ -28,7 +32,7 @@ export function AuthApp() {
     const gen = generation.current;
     // Keep the PKCE callback single-use even if React mounts effects twice.
     bootstrap.current ??= (async () => {
-      const auth = await createAuth0Client({ domain: config.domain, clientId: config.clientId, authorizationParams: { redirect_uri: window.location.origin, ...(config.audience ? { audience: config.audience } : {}) } });
+      const auth = await createAuth0Client({ domain: config.domain, clientId: config.clientId, httpTimeoutInSeconds:10, authorizeTimeoutInSeconds:10, authorizationParams: { redirect_uri: window.location.origin, ...(config.audience ? { audience: config.audience } : {}) } });
       const params = new URLSearchParams(window.location.search);
       let accountType: AccountType | undefined;
       if (params.has('state') && (params.has('code') || params.has('error'))) {
@@ -45,16 +49,16 @@ export function AuthApp() {
     })();
     void bootstrap.current.then(session => {
       if (!mounted) return;
-      client.current = session.client;
       if (generation.current !== gen) return;
+      client.current = session.client;
       if (session.user && !previewing.current) {
         const name = session.user.name || session.user.nickname || session.user.email || 'CaseCoach learner';
         setViewer({ name, preview: false });
       }
       setStatus(session.accountType === 'faculty' ? 'Faculty signup received. Faculty access requires institutional verification.' : 'Sign in or create an account to enter your learning space.');
-    }).catch(() => {
-      if (mounted && generation.current === gen) setStatus('Sign in could not initialize. Check your connection and Auth0 settings, or explore the educational preview.');
-    }).finally(() => { if (mounted) setBusy(false); });
+    }).catch(error => {
+      if (mounted && generation.current === gen) setStatus(authErrorMessage(error));
+    }).finally(() => { if (mounted && generation.current === gen) setBusy(false); });
     return () => { mounted = false; };
   }, [config]);
 
@@ -64,15 +68,17 @@ export function AuthApp() {
       return;
     }
     setBusy(true);
+    generation.current++;
     try {
-      const auth = client.current ?? await createAuth0Client({ domain: config.domain, clientId: config.clientId, authorizationParams: { redirect_uri: window.location.origin, ...(config.audience ? { audience: config.audience } : {}) } });
+      // Redirect immediately; a background silent-session check must not delay a user click.
+      const auth = client.current ?? new Auth0Client({ domain: config.domain, clientId: config.clientId, httpTimeoutInSeconds:10, authorizeTimeoutInSeconds:10, authorizationParams: { redirect_uri: window.location.origin, ...(config.audience ? { audience: config.audience } : {}) } });
       client.current = auth;
       await auth.loginWithRedirect(accountType ? {
         appState: { casecoachAccountType: accountType },
         authorizationParams: { screen_hint: 'signup' },
       } : undefined);
-    } catch {
-      setStatus('Sign in could not start. Check your connection and Auth0 callback settings, then try again.');
+    } catch(error) {
+      setStatus(authErrorMessage(error));
     } finally { setBusy(false); }
   }
 

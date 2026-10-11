@@ -70,6 +70,14 @@ The React landing screen offers an explicitly unauthenticated educational previe
 
 ## Faculty review access
 
+For the CaseCoach SPA to log in using the custom API audience, go to Applications
+→ APIs → CaseCoach → Settings → Application Access Policy and select Per-app
+authorization for User-Delegated Access. Save, then open Application Access,
+find the CaseCoach SPA client, select Edit, grant User-Delegated Access and save.
+Client Access is the separate machine-to-machine grant; enabling it alone does
+not authorize browser login. If Auth0 returns “Client is not authorized to access
+resource server”, check this user grant before changing callback or AWS settings.
+
 In Auth0 Dashboard → Applications → APIs → the CaseCoach API, enable **RBAC**
 and **Add Permissions in the Access Token**. Add the `review:encounters`
 permission, create an institution-approved faculty role and assign the permission

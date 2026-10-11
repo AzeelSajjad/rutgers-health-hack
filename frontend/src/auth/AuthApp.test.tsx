@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth0Client } from '@auth0/auth0-spa-js';
+import { createAuth0Client, Auth0Client } from '@auth0/auth0-spa-js';
 import { AuthApp } from './AuthApp';
 
-vi.mock('@auth0/auth0-spa-js', () => ({ createAuth0Client: vi.fn() }));
+vi.mock('@auth0/auth0-spa-js', () => ({ createAuth0Client: vi.fn(), Auth0Client: vi.fn(function(){return auth;}) }));
 const auth = {
   handleRedirectCallback: vi.fn(), isAuthenticated: vi.fn(), getUser: vi.fn(),
   loginWithRedirect: vi.fn(), logout: vi.fn(),
@@ -13,6 +13,10 @@ const auth = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('VITE_AUTH0_DOMAIN','school.example.auth0.com');
+  vi.stubEnv('VITE_AUTH0_AUDIENCE','https://casecoach.example/api');
+  vi.stubEnv('VITE_AUTH0_CLIENT_ID','public-spa-id');
+  vi.stubEnv('VITE_LOCAL_DEMO_AUTH','0');
   HTMLElement.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('scrollTo', vi.fn());
   window.CASECOACH_AUTH0 = { domain: 'school.example.auth0.com', clientId: 'public-spa-id', audience: 'https://casecoach.example/api' };
@@ -28,6 +32,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('unified landing and authentication', () => {
+  it('redirects on click even when background session initialization never settles', async () => {
+    vi.mocked(createAuth0Client).mockReturnValue(new Promise(()=>{}));
+    render(<AuthApp/>);
+    expect((screen.getByRole('button',{name:'Sign in'}) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+    await waitFor(()=>expect(auth.loginWithRedirect).toHaveBeenCalled());
+    expect(Auth0Client).toHaveBeenCalled();
+  });
+  it('explains a rejected application API grant after callback and permits retry', async () => {
+    window.history.replaceState({},'','/?error=invalid_request&state=sdk-state');
+    auth.handleRedirectCallback.mockRejectedValueOnce({error:'invalid_request',error_description:'Client is not authorized to access resource server https://casecoach-api'});
+    render(<AuthApp/>);
+    await screen.findByText(/CaseCoach is not authorized to use its API/);
+    expect(window.location.search).toBe('');
+    expect((screen.getByRole('button',{name:'Sign in'}) as HTMLButtonElement).disabled).toBe(false);
+  });
   it('enters explicitly enabled local demo without contacting Auth0', async () => {
     vi.stubEnv('VITE_LOCAL_DEMO_AUTH','1');
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({role:'student'})}));
@@ -101,7 +121,7 @@ describe('unified landing and authentication', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Denied', 'SecurityError'); });
     vi.mocked(createAuth0Client).mockRejectedValue(new DOMException('Denied', 'SecurityError'));
     render(<AuthApp/>);
-    await screen.findByText(/Sign in could not initialize/);
+    await screen.findByText(/Browser storage is blocked/);
     fireEvent.click(screen.getByRole('button', { name: 'Preview demo without signing in' }));
     await screen.findByText('Choose a patient');
     fireEvent.click(screen.getAllByRole('button', { name: 'Start encounter' })[0]!);
