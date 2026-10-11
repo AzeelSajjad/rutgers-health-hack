@@ -277,15 +277,30 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
       if (!Constructor) { setError('Voice preview is unavailable in this browser. Type your question, or use the live backend microphone.'); setPhase('ready'); return; }
       captionState.current = 'recording';
       const r = new Constructor(), gen = generation.current, initialDraft = draft; recognition.current = r;
+      let receivedSpeech = false;
       r.lang = 'en-US'; r.interimResults = true; r.continuous = true;
       r.onresult = event => {
         if (gen !== generation.current || captionState.current === 'idle' || recognition.current !== r) return;
         let finalText = '', partialText = '';
         for (let i = 0; i < event.results.length; i++) { const result = event.results[i]; if (result.isFinal) finalText += ` ${result[0].transcript}`; else partialText += ` ${result[0].transcript}`; }
+        receivedSpeech ||= !!(finalText.trim() || partialText.trim());
         setDraft(`${initialDraft} ${finalText}`.trim()); setPartial(partialText.trim());
       };
-      r.onend = () => { if (gen === generation.current && recognition.current === r) { captionState.current = 'idle'; clearCaptionWait(); setPartial(''); setPhase('ready'); recognition.current = null; composer.current?.focus(); } };
-      r.onerror = event => { if (gen === generation.current && recognition.current === r) { stopMic(); setError(event.error === 'not-allowed' ? 'Microphone permission was denied. You can type instead.' : 'Voice preview stopped. Review any captions or type your question.'); setPhase('ready'); } };
+      r.onend = () => { if (gen === generation.current && recognition.current === r) {
+        if (!receivedSpeech && captionState.current === 'recording') setError('The browser stopped speech recognition before hearing speech. Open this page in Chrome, allow microphone access, and check your selected input device. Preview uses browser recognition; AWS transcription is available in Live AI.');
+        captionState.current = 'idle'; clearCaptionWait(); setPartial(''); setPhase('ready'); recognition.current = null; composer.current?.focus();
+      } };
+      r.onerror = event => { if (gen === generation.current && recognition.current === r) {
+        stopMic();
+        const messages: Record<string,string> = {
+          'not-allowed': 'Microphone access was blocked. Allow the microphone for this site in your browser and in macOS System Settings → Privacy & Security → Microphone.',
+          'service-not-allowed': 'This browser does not allow its speech recognition service. Open the page in Chrome, or use Live AI with AWS transcription after sign-in is configured.',
+          'audio-capture': 'The browser could not capture your microphone. Check the selected input device and macOS microphone permission.',
+          'network': 'The browser speech recognition service could not connect. Check your connection or use Live AI with AWS transcription after sign-in is configured.',
+          'no-speech': 'No speech was detected. Check your microphone input level, then try again.',
+        };
+        setError(messages[event.error] || `Browser speech recognition stopped (${event.error}). Review any captions or type your question.`); setPhase('ready');
+      } };
       try { r.start(); } catch { stopMic(); setPhase('ready'); setError('The microphone could not start. Type your question instead.'); }
       return;
     }

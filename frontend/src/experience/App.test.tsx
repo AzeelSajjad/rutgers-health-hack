@@ -54,6 +54,20 @@ function question(text: string) {
 }
 
 describe('encounter lifecycle regression coverage', () => {
+  it('explains an immediate browser recognition stop instead of silently resetting', () => {
+    open(); fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }));
+    act(() => Recognition.instance.onend?.());
+    expect(screen.getByText(/The browser stopped speech recognition before hearing speech/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Start microphone' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('does not report an unexpected stop when the user stops recording', () => {
+    open(); fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop recording and review captions' }));
+    act(() => Recognition.instance.onend?.());
+    expect(screen.queryByText(/The browser stopped speech recognition/)).toBeNull();
+  });
+
   it('aborts recognition on exit before returning to the landing screen', () => {
     const exit = vi.fn(); open(true, exit);
     fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }));
