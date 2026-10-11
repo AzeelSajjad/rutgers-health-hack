@@ -7,9 +7,12 @@ import './landing.css';
 type AccountType = 'student' | 'faculty';
 interface Session { client: Auth0Client; user?: User; accountType?: AccountType }
 const ExperienceApp = lazy(() => import('../experience/App').then(module => ({ default: module.App })));
+const localDemoEnabled = () => import.meta.env.VITE_LOCAL_DEMO_AUTH === '1' && ['localhost','127.0.0.1','[::1]'].includes(window.location.hostname);
+const localDemoToken = async () => 'casecoach-local-development';
 
 export function AuthApp() {
-  const [config] = useState(getAuthConfig);
+  const [localDemo] = useState(localDemoEnabled);
+  const [config] = useState(() => localDemo ? null : getAuthConfig());
   const [viewer, setViewer] = useState<{ name: string; preview: boolean } | null>(null);
   const [busy, setBusy] = useState(Boolean(config));
   const [logoutFailed, setLogoutFailed] = useState(false);
@@ -89,6 +92,8 @@ export function AuthApp() {
       } finally { setBusy(false); }
     }
   }
+
+  if (localDemo) return <Suspense fallback={<p role="status">Opening local demo…</p>}><p role="status" className="local-demo-notice">Local student demo · Auth0 disabled · live AWS services · faculty review requires sign-in</p><ExperienceApp accountName="Local demo learner" getAccessToken={localDemoToken}/></Suspense>;
 
   if (viewer) return <Suspense fallback={<p role="status">Opening your learning space…</p>}><ExperienceApp
     accountName={viewer.name}

@@ -19,6 +19,30 @@ permissions. Stop the paired servers with Ctrl+C. Use `DEMO_PORT=5174` if needed
 
 ## Run live AWS encounters and faculty review
 
+### Local live demo with Auth0 disabled
+
+For the current hackathon demo, start real AWS encounters without the unfinished
+Auth0 setup:
+
+```sh
+npm run demo -- --local
+```
+
+The React app enters directly as a local demo student. Transcribe, Bedrock,
+Polly, DynamoDB and S3 remain live. This mode binds only to loopback, rejects
+non-loopback peers and refuses to run with `NODE_ENV=production`. All local
+demo encounters use one demo identity; faculty routes stay forbidden. Stop
+this process before starting the regular authenticated mode. This is for the
+single-computer demo, not a deployment authentication system.
+
+Check the running website and proxy using real AWS:
+
+```sh
+npm run demo:check --workspace backend -- --live
+```
+
+### Authenticated mode
+
 The Rutgers event `healthhack` profile is working and the `casecoach-sessions`
 CloudFormation stack is deployed in `us-west-2`. Resource names are configured in
 ignored `backend/.env` and `backend/work/storage.env` on this machine. On a new
@@ -73,9 +97,10 @@ npm run live:storage --workspace backend
 npm run live:voice --workspace backend
 npm run smoke --workspace backend
 npm run live:system --workspace backend
+npm run live:history --workspace backend
 ```
 
-The root suite has 270 passing tests; the standalone voice prototype has nine.
+The root suite has 300 passing tests; the standalone voice prototype has nine.
 Fourteen optional live AI evaluations are skipped. Live integration checks passed
 for Wyatt, Yvette and generated patients through Transcribe, Bedrock Runtime,
 Polly, reconnect/chart recovery, DynamoDB, versioned S3 and protected faculty HTTP

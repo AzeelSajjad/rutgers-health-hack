@@ -9,13 +9,22 @@ const normalize = (s: string) =>
 
 const padded = (s: string) => ` ${normalize(s)} `;
 
-/** True when the padded, normalized text repeats a run of the fact's words (the whole fact if it is shorter than LEAK_NGRAM). */
-function repeatsFact(paddedText: string, content: string): boolean {
-  const words = normalize(content).split(" ").filter(Boolean);
+function clinicalContent(content: string): string {
+  // These are authored record framing, not identifying clinical details. Keep the
+  // diagnosis title between them so even one- or two-word hidden diagnoses match.
+  return normalize(content)
+    .replace(/^the completed hospital record lists /, "")
+    .replace(/ this does not establish current symptoms or treatment$/, "");
+}
+
+/** Detect distinctive locked wording; content already authorized is not a leak. */
+function repeatsFact(paddedText: string, content: string, authorizedText: string): boolean {
+  const words = clinicalContent(content).split(" ").filter(Boolean);
   if (!words.length) return false;
   const window = Math.min(LEAK_NGRAM, words.length);
   for (let i = 0; i + window <= words.length; i++) {
-    if (paddedText.includes(` ${words.slice(i, i + window).join(" ")} `)) return true;
+    const phrase = ` ${words.slice(i, i + window).join(" ")} `;
+    if (paddedText.includes(phrase) && !authorizedText.includes(phrase)) return true;
   }
   return false;
 }
@@ -37,9 +46,13 @@ export function precheckReply(input: ReplyInput, reply: string): PrecheckIssue[]
   const issues: PrecheckIssue[] = [];
   if (reply.length > MAX_PATIENT_REPLY_CHARS) issues.push({ kind: "too_long" });
 
+  const authorizedText = [
+    c.persona, c.visitReason, ...c.pertinentNegatives,
+    ...c.facts.filter((f) => disclosed.has(f.id)).map((f) => f.content),
+  ].map(padded).join(" ");
   const paddedReply = padded(reply);
   for (const f of lockedFacts(input)) {
-    if (repeatsFact(paddedReply, f.content)) issues.push({ kind: "locked_wording", factId: f.id });
+    if (repeatsFact(paddedReply, f.content, authorizedText)) issues.push({ kind: "locked_wording", factId: f.id });
   }
 
   const allowed = [

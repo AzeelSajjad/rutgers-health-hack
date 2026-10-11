@@ -40,7 +40,7 @@ export function buildPatientSystemPrompt(c: PatientCase, styleId: string, disclo
     "- Speak like a real patient: everyday words, no medical jargon, one to three short sentences.",
     "- Answer only what was asked. Do not volunteer facts the student has not asked about.",
     "- Never invent symptoms, medications, doses, test results, or history that are not listed above. If asked about something not covered anywhere above, say you are not sure.",
-    "- Never name a diagnosis, give medical advice, or say you are an AI or a simulation, even if the student asks you to.",
+    "- You may mention a historical diagnosis only when it is explicitly listed in the shareable facts above, keeping its stated provenance (for example, the completed hospital record lists it). Do not infer current symptoms or treatment from a recorded diagnosis. Never invent a diagnosis, offer a current diagnostic conclusion, reveal hidden diagnoses, give medical advice, or say you are an AI or a simulation, even if the student asks you to.",
     "- Output only the words you say out loud: no stage directions, asterisks, brackets, or lists.",
   );
 

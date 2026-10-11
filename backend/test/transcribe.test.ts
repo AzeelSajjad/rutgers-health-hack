@@ -155,3 +155,57 @@ describe("TranscribeStt", () => {
     expect(calls[0].signal!.aborted).toBe(true);
   });
 });
+
+describe("Transcribe terminal states", () => {
+  it("reports a provider rejection after graceful end exactly once", async () => {
+    let reject!: (error: Error) => void;
+    const client = { send: () => new Promise((_, fail) => { reject = fail; }) };
+    const events: unknown[] = [];
+    const stream = new TranscribeStt("us-west-2", client as never).start(
+      () => events.push("caption"), () => events.push("done"), error => events.push(error),
+    );
+    stream.end();
+    const failure = new Error("Transcribe unavailable after input closed");
+    reject(failure);
+    await tick();
+    stream.end();
+    stream.cancel();
+    expect(events).toEqual([failure]);
+  });
+
+  it("delivers buffered final captions before graceful completion", async () => {
+    const received: Buffer[] = [];
+    const client = { send: async (cmd: { input: { AudioStream: AsyncIterable<{ AudioEvent: { AudioChunk: Buffer } }> } }) => {
+      for await (const event of cmd.input.AudioStream) received.push(event.AudioEvent.AudioChunk);
+      return { TranscriptResultStream: (async function* () {
+        yield { TranscriptEvent: { Transcript: { Results: [
+          { IsPartial: false, Alternatives: [{ Transcript: "Final buffered question" }] },
+        ] } } };
+      })() };
+    } };
+    const events: string[] = [];
+    const stream = new TranscribeStt("us-west-2", client as never).start(
+      (text, final) => events.push(`${final}:${text}`), () => events.push("done"), () => events.push("error"),
+    );
+    stream.push(Buffer.from("buffered"));
+    stream.end();
+    stream.push(Buffer.from("ignored"));
+    await tick();
+    expect(received.map(buffer => buffer.toString())).toEqual(["buffered"]);
+    expect(events).toEqual(["true:Final buffered question", "done"]);
+  });
+
+  it("does not hide a non-abort provider failure during cancellation", async () => {
+    let reject!: (error: Error) => void;
+    const client = { send: () => new Promise((_, fail) => { reject = fail; }) };
+    const events: unknown[] = [];
+    const stream = new TranscribeStt("us-west-2", client as never).start(
+      () => {}, () => events.push("done"), error => events.push(error),
+    );
+    stream.cancel();
+    const failure = new Error("Unexpected provider failure");
+    reject(failure);
+    await tick();
+    expect(events).toEqual([failure]);
+  });
+});

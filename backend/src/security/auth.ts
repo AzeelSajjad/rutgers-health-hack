@@ -24,12 +24,12 @@ const isLoopback = (address?: string) => address === '127.0.0.1' || address === 
 export function authSettings(env: NodeJS.ProcessEnv, host: string): { verifyAccessToken: TokenVerifier } {
   const configuredIssuer = env.AUTH0_ISSUER_BASE_URL || (env.AUTH0_DOMAIN ? `https://${env.AUTH0_DOMAIN}/` : '');
   const audience = env.AUTH0_AUDIENCE;
-  if (!configuredIssuer && !audience && env.FAKE_AWS === '1') {
-    if (env.NODE_ENV === 'production') throw new Error('FAKE_AWS authentication bypass is disabled in production');
-    if (!isLoopback(host)) throw new Error('FAKE_AWS authentication bypass requires a loopback bind address');
+  if (env.LOCAL_DEMO_AUTH === '1' || (!configuredIssuer && !audience && env.FAKE_AWS === '1')) {
+    if (env.NODE_ENV === 'production') throw new Error('Local demonstration authentication is disabled in production');
+    if (!isLoopback(host)) throw new Error('Local demonstration authentication requires a loopback bind address');
     return { verifyAccessToken: async (token, remoteAddress) => {
       if (!isLoopback(remoteAddress) || token !== 'casecoach-local-development') throw new Error('Invalid development identity');
-      return { sub: 'local-development', expiresAt: Date.now() + 60 * 60_000 };
+      return { sub: 'local-development', expiresAt: Date.now() + 60 * 60_000, role: 'student' };
     } };
   }
   if (!configuredIssuer || !audience) throw new Error('AUTH0_ISSUER_BASE_URL (or AUTH0_DOMAIN) and AUTH0_AUDIENCE are required');

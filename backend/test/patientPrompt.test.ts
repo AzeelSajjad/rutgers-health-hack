@@ -59,3 +59,21 @@ describe("buildPatientMessages", () => {
     expect(msgs).toEqual([{ role: "user", content: "Hi\nStill there?" }]);
   });
 });
+
+describe("record diagnosis instructions", () => {
+  it("permits released history with provenance and forbids invented or hidden diagnoses", () => {
+    const recordCase = { ...c, facts: [
+      ...c.facts,
+      { id: "record", topic: "hospital history", content: "The completed hospital record lists: Essential hypertension.", disclosure: "onRequest" as const },
+      { id: "hidden-record", topic: "additional hospital history", content: "The completed hospital record lists: Diabetes mellitus.", disclosure: "onRequest" as const },
+    ] };
+    const prompt = buildPatientSystemPrompt(recordCase, "concerned", ["a", "record"]);
+    expect(prompt).toContain("Essential hypertension");
+    expect(prompt).not.toContain("Diabetes mellitus");
+    expect(prompt).toContain("historical diagnosis only when it is explicitly listed in the shareable facts");
+    expect(prompt).toContain("keeping its stated provenance");
+    expect(prompt).toContain("Never invent a diagnosis");
+    expect(prompt).toContain("reveal hidden diagnoses");
+    expect(prompt).not.toContain("Never name a diagnosis");
+  });
+});

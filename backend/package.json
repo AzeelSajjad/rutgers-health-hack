@@ -21,7 +21,8 @@
     "live:storage": "tsx scripts/live-storage-check.ts",
     "live:voice": "tsx scripts/live-voice-check.ts",
     "live:system": "tsx scripts/live-system-check.ts",
-    "configure:auth": "tsx scripts/configure-auth.ts"
+    "configure:auth": "tsx scripts/configure-auth.ts",
+    "live:history": "tsx scripts/live-history-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.34.4",

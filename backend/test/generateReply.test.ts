@@ -221,3 +221,23 @@ describe("validateReply", () => {
     for (const code of ISSUE_CODES) expect(call.system).toContain(code);
   });
 });
+
+describe("historical diagnosis validator policy", () => {
+  it("keeps released recorded history separate from hidden diagnoses", async () => {
+    const fake = new FakeLlm();
+    fake.queueJson("validate_reply", { ok: true, issues: [], lockedFactIds: [] });
+    const patientCase = makeCase();
+    patientCase.facts = [
+      { id: "record", topic: "hospital history", content: "The completed hospital record lists: Essential hypertension.", disclosure: "onRequest" },
+      { id: "hidden", topic: "additional history", content: "The completed hospital record lists: Diabetes mellitus.", disclosure: "onRequest" },
+    ];
+    const verdict = await validateReply(fake, { ...input, patientCase, disclosedFactIds: ["record"] }, "My completed hospital record lists essential hypertension.");
+    expect(verdict.ok).toBe(true);
+    const call = fake.jsonCalls[0];
+    expect(call.system).toContain("historical diagnosis explicitly included in the shareable facts is allowed");
+    expect(call.system).toContain("Hidden diagnoses remain prohibited");
+    expect(call.system).toContain("Invents a diagnosis, offers a current diagnostic conclusion");
+    expect(JSON.parse(call.user).shareableFacts).toEqual([{ topic: "hospital history", content: patientCase.facts[0].content }]);
+    expect(JSON.parse(call.user).lockedFacts).toEqual([{ id: "hidden", topic: "additional history", content: patientCase.facts[1].content }]);
+  });
+});

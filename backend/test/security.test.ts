@@ -15,6 +15,14 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { await Promise.all(cleanup.splice(0).map(close => close())); });
 
 describe('JWT verification and session ownership', () => {
+  it('allows explicit local live demo only on loopback and never grants faculty permissions', async () => {
+    expect(() => authSettings({LOCAL_DEMO_AUTH:'1'}, '0.0.0.0')).toThrow(/loopback/);
+    expect(() => authSettings({LOCAL_DEMO_AUTH:'1',NODE_ENV:'production'}, '127.0.0.1')).toThrow(/production/);
+    const local=authSettings({LOCAL_DEMO_AUTH:'1',AUTH0_AUDIENCE:audience,FACULTY_SUBJECTS:'local-development'},'127.0.0.1');
+    await expect(local.verifyAccessToken('casecoach-local-development','127.0.0.1')).resolves.toMatchObject({role:'student'});
+    await expect(local.verifyAccessToken('casecoach-local-development','192.0.2.1')).rejects.toThrow();
+    await expect(local.verifyAccessToken('wrong','127.0.0.1')).rejects.toThrow();
+  });
   it('requires signed, unexpired RS256 access tokens with the configured issuer, audience and subject', async () => {
     const pair = await generateKeyPair('RS256');
     const publicKey = await exportJWK(pair.publicKey);

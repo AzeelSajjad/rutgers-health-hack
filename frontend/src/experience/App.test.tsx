@@ -373,3 +373,61 @@ it('renders the backend chart contract and updates it after fact disclosure with
   socket.receive({type:'patient_turn',studentTurn:{index:0,speaker:'student',text:'Tell me more',at:'now'},patientTurn:{index:1,speaker:'patient',text:'Here is another fact',at:'now'},audioBase64:null,styleLabel:'Reserved',disclosedFacts:[],chart:{...chart,items:[...chart.items,{item_id:'diet',label:'Diet preferences',category:'nutrition',value_type:'text',value:'Dislikes vegetables',display_value:'Dislikes vegetables',unit:null,source_reference:source}]}});
   expect(screen.getByLabelText('Patient chart').textContent).toContain('Dislikes vegetables');
 });
+
+it('preserves long dictation, explains limits, and allows editing before sending', () => {
+  open(); fireEvent.click(screen.getByRole('button', {name:'Start microphone'}));
+  const text = 'word '.repeat(230).trim();
+  act(() => Recognition.instance.onresult?.({results:[{isFinal:true,0:{transcript:text}}],resultIndex:0}));
+  act(() => Recognition.instance.onend?.());
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(text);
+  expect(screen.getByText(/Shorten your question before sending/)).toBeTruthy();
+  expect((screen.getByRole('button',{name:'Send question'}) as HTMLButtonElement).disabled).toBe(true);
+  question('Edited question');
+  act(() => vi.advanceTimersByTime(650));
+  expect(screen.getByRole('log').textContent).toContain('Edited question');
+});
+it('checks UTF-8 limits before submitting and accepts the exact character boundary', () => {
+  const socket = open(false)!;
+  question('界'.repeat(667));
+  expect(screen.getByText(/Shorten your question before sending/)).toBeTruthy();
+  expect(socket.sent.some(frame => JSON.parse(frame).type === 'student_turn')).toBe(false);
+  question('x'.repeat(1000));
+  expect(socket.sent.some(frame => JSON.parse(frame).text === 'x'.repeat(1000))).toBe(true);
+});
+it('pauses and resumes preview speech, then discards old patient playback on navigation', () => {
+  const synthesis = {speak:vi.fn(),pause:vi.fn(),resume:vi.fn(),cancel:vi.fn()};
+  vi.stubGlobal('speechSynthesis',synthesis);
+  vi.stubGlobal('SpeechSynthesisUtterance', class {onstart: (()=>void)|null = null; onend = null; onerror = null; constructor(public text:string) {}});
+  open(); question('How are you?');
+  act(() => vi.advanceTimersByTime(650));
+  const utterance = synthesis.speak.mock.calls[0]![0] as {onstart:()=>void};
+  act(() => utterance.onstart());
+  fireEvent.click(screen.getByRole('button',{name:'Pause patient audio'}));
+  expect(synthesis.pause).toHaveBeenCalledTimes(1);
+  expect((screen.getByRole('button',{name:'Play patient reply'}) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:'Play patient reply'}));
+  expect(synthesis.resume).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button',{name:/Practice cases/}));
+  fireEvent.click(screen.getAllByRole('button',{name:'Return to encounter'})[0]!);
+  expect((screen.getByRole('button',{name:'Play patient reply'}) as HTMLButtonElement).disabled).toBe(true);
+});
+it('does not replace a live session when an abandoned generation request returns', async () => {
+  let resolve!: (value: unknown) => void;
+  const pending = new Promise(r => {resolve = r;});
+  vi.stubGlobal('fetch', vi.fn((url: string) => url === '/api/me' ? Promise.resolve({ok:true,json:async()=>({role:'student'})}) : pending));
+  render(<App getAccessToken={async () => 'token'}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Generate random patient'}));
+  await act(async () => {await Promise.resolve();});
+  fireEvent.click(screen.getAllByRole('button',{name:'Overview'})[0]!);
+  fireEvent.click(screen.getByRole('button',{name:'Browse practice cases'}));
+  fireEvent.click(screen.getAllByRole('button',{name:'Start encounter'})[0]!);
+  fireEvent.click(screen.getByRole('button',{name:'Begin conversation'}));
+  const socket = Socket.instances[0]!;
+  socket.receive({type:'authenticated'});
+  socket.receive({...started, transcript:[{index:0,speaker:'patient',text:'Live transcript stays here',at:new Date().toISOString()}]});
+  await act(async () => {resolve({ok:true,json:async()=>({caseId:'random-late',patient:{name:'Late Patient',age:55,visitReason:'Hospital history'}})}); await pending;});
+  expect(screen.getByRole('log').textContent).toContain('Live transcript stays here');
+  expect(screen.queryByText('Late Patient')).toBeNull();
+  expect(socket.close).not.toHaveBeenCalled();
+  expect(Socket.instances).toHaveLength(1);
+});

@@ -15,6 +15,7 @@ import { withSessionLock } from "./sessionLock.js";
 
 export interface HandlerDeps extends EngineDeps {
   stt: Stt;
+  resources?: { limits: import("../security/resourceLimits.js").ResourceLimits; subject: string };
   review?: import("../review/facultyRoutes.js").FacultyReviewStore;
 }
 
@@ -53,6 +54,8 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
   let caption: CaptionStream | null = null;
   // Bumped on every caption_start so callbacks from a replaced stream become no-ops.
   let captionGen = 0;
+  let captionFinish: (() => void) | undefined;
+  let captionEnding = false;
   let captionTimer: ReturnType<typeof setTimeout> | undefined;
 
   const fail = (message: string, scope?: "turn") =>
@@ -65,11 +68,16 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
 
   /** graceful: end() so buffered audio is transcribed and the final caption arrives; otherwise cancel(). */
   const stopCaptions = (mode: "graceful" | "cancel") => {
-    clearTimeout(captionTimer);
-    captionTimer = undefined;
-    if (mode === "graceful") caption?.end();
-    else caption?.cancel();
-    caption = null;
+    if (mode === "graceful") {
+      if (!captionEnding) {
+        captionEnding = true;
+        try { caption?.end(); } catch (err) { failFrom(err); stopCaptions("cancel"); }
+      }
+    } else {
+      const stream = caption;
+      captionFinish?.();
+      try { stream?.cancel(); } catch (err) { deps.log?.("speech cancellation failed", err); }
+    }
   };
 
   async function onMessage(raw: string): Promise<void> {
@@ -87,6 +95,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
       case "start_session": {
         if (sessionId) return fail("Session already started");
         if (busy) return fail("Please wait");
+        if (deps.resources && !deps.resources.limits.take(deps.resources.subject, "session")) return fail("Session limit reached. Please wait one minute and retry.");
         busy = true;
         try {
           const { state, patientCase } = await startEncounter(deps, msg.caseId);
@@ -128,6 +137,7 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
       case "student_turn": {
         if (!sessionId) return fail("No active session", "turn");
         if (busy) return fail("The patient is still responding", "turn");
+        if (deps.resources && !deps.resources.limits.take(deps.resources.subject, "turn")) return fail("Question limit reached. Please wait one minute and retry.", "turn");
         busy = true;
         send({ type: "patient_thinking" });
         try {
@@ -153,33 +163,42 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
 
       case "caption_start": {
         if (!sessionId) return fail("No active session");
-        stopCaptions("cancel");
+        if (captionFinish) return fail("Speech recognition is already active or finishing. Please wait before restarting.");
+        const release = deps.resources ? deps.resources.limits.acquireCaption(deps.resources.subject) : () => {};
+        if (!release) return fail("Speech recognition limit reached. Stop other recordings or wait one minute, then retry.");
         const gen = ++captionGen;
         let finished = false;
         const live = () => gen === captionGen && !finished;
         const finish = () => {
           if (!live()) return;
           finished = true;
+          clearTimeout(captionTimer);
+          captionTimer = undefined;
+          caption = null;
+          captionFinish = undefined;
+          captionEnding = false;
+          release();
           send({ type: "caption_done" });
         };
+        captionFinish = finish;
         try {
-          const stream: CaptionStream = deps.stt.start(
-            (text, isFinal) => {
-              if (live()) send({ type: "caption", text, isFinal });
-            },
+          const stream = deps.stt.start(
+            (text, isFinal) => { if (live()) send({ type: "caption", text, isFinal }); },
             finish,
             (err) => {
-              deps.log?.("speech recognition failed", err);
-              if (caption === stream) caption = null;
               if (!live()) return;
+              deps.log?.("speech recognition failed", err);
               fail("Speech recognition stopped. Please try again or type your question.");
               finish();
             },
           );
-          caption = stream;
-          captionTimer = setTimeout(() => stopCaptions("cancel"), MAX_CAPTION_MS);
+          if (live()) {
+            caption = stream;
+            captionTimer = setTimeout(() => stopCaptions("cancel"), MAX_CAPTION_MS);
+          }
         } catch (err) {
           failFrom(err);
+          finish();
         }
         return;
       }
@@ -210,7 +229,10 @@ export function createSessionHandler(deps: HandlerDeps, send: (m: ServerMessage)
 
   return {
     onMessage,
-    onAudio: (chunk: Buffer) => caption?.push(chunk),
+    onAudio: (chunk: Buffer) => {
+      if (captionEnding) return;
+      try { caption?.push(chunk); } catch (err) { failFrom(err); stopCaptions("cancel"); }
+    },
     onClose: () => stopCaptions("cancel"),
   };
 }

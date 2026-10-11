@@ -1,3 +1,4 @@
+import { LocalResourceLimits, type ResourceLimits } from "./security/resourceLimits.js";
 import { registerFacultyRoutes } from './review/facultyRoutes.js';
 import { registerCatalogRoute } from './cases/catalogRoute.js';
 import Fastify, { LogController } from 'fastify';
@@ -10,6 +11,7 @@ interface ServerOptions {
   allowedOrigins: string[];
   verifyAccessToken: TokenVerifier;
   authTimeoutMs?: number;
+  resourceLimits?: ResourceLimits;
 }
 const toBuffer = (data: RawData): Buffer =>
   Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data);
@@ -18,8 +20,9 @@ export function createEncounterServer(deps: HandlerDeps, options: ServerOptions)
   // Never log request URLs, including rejected upgrades with credentials in their query.
   const app = Fastify({ logger: true, logController: new LogController({ disableRequestLogging: true }) });
   app.get('/health', async () => ({ ok: true }));
+  const limits = options.resourceLimits ?? new LocalResourceLimits();
   const origins = new Set(options.allowedOrigins);
-  registerCatalogRoute(app, deps.cases, origins, options.verifyAccessToken);
+  registerCatalogRoute(app, deps.cases, origins, options.verifyAccessToken, limits);
   registerFacultyRoutes(app, options.verifyAccessToken, origins, deps.review);
   const verifyClient: VerifyClientCallbackSync = ({ origin, req }) => origins.has(origin) && req.url === '/ws';
   const wss = new WebSocketServer({
@@ -81,7 +84,7 @@ export function createEncounterServer(deps: HandlerDeps, options: ServerOptions)
           if (!verified.sub || !Number.isFinite(verified.expiresAt) || verified.expiresAt <= Date.now()) { reject('AUTH_EXPIRED'); return; }
           identity = verified;
           clearTimeout(authTimer);
-          handler = createSessionHandler({ ...deps, sessions: sessionsForOwner(deps.sessions, verified) }, message => {
+          handler = createSessionHandler({ ...deps, resources: { limits, subject: verified.sub }, sessions: sessionsForOwner(deps.sessions, verified) }, message => {
             if (verified.expiresAt <= Date.now()) { reject('AUTH_EXPIRED'); return; }
             send(message);
           });

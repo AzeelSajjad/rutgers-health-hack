@@ -25,9 +25,19 @@ beforeEach(() => {
   auth.getTokenSilently.mockResolvedValue('verified-access-token');
   vi.mocked(createAuth0Client).mockResolvedValue(auth as never);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('unified landing and authentication', () => {
+  it('enters explicitly enabled local demo without contacting Auth0', async () => {
+    vi.stubEnv('VITE_LOCAL_DEMO_AUTH','1');
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({role:'student'})}));
+    render(<AuthApp/>);
+    await screen.findByText('Choose a patient');
+    expect(createAuth0Client).not.toHaveBeenCalled();
+    expect(screen.getByText(/Local student demo · Auth0 disabled/)).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Faculty review'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Sign out'})).toBeNull();
+  });
   it('requests an API audience from Auth0 and supplies access tokens for verified roles and live encounters', async () => {
     auth.isAuthenticated.mockResolvedValue(true);
     const OriginalWebSocket = window.WebSocket;

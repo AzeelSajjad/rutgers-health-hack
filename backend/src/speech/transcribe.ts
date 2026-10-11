@@ -91,7 +91,8 @@ export class TranscribeStt implements Stt {
   start(onCaption: CaptionHandler, onDone: () => void, onError: (err: unknown) => void): CaptionStream {
     const queue = new ChunkQueue();
     const controller = new AbortController();
-    let stopped = false;
+    let inputClosed = false;
+    let cancelled = false;
     let settled = false;
     let total = 0;
     // A throwing callback must never surface as an unhandled rejection (it would crash the process).
@@ -111,13 +112,17 @@ export class TranscribeStt implements Stt {
       (...args: A) => {
         if (settled) return;
         settled = true;
+        inputClosed = true;
+        queue.cancel();
         fn(...args);
       };
     const done = once(safe(onDone));
     const error = once(safe(onError));
 
     const cancel = () => {
-      stopped = true;
+      if (settled) return;
+      inputClosed = true;
+      cancelled = true;
       queue.cancel();
       controller.abort();
     };
@@ -126,23 +131,27 @@ export class TranscribeStt implements Stt {
       error(new Error(message));
     };
 
-    this.run(queue, caption, controller.signal)
+    this.run(queue, (text, isFinal) => {
+      if (!cancelled && !settled) caption(text, isFinal);
+    }, controller.signal)
       .then(done, (err) => {
         queue.cancel();
-        // A stream we stopped ourselves (including the abort from cancel()) is a normal finish.
-        if (stopped) done();
+        // Only an intentional abort is a normal cancellation. Graceful input closure
+        // still needs to report provider failures instead of claiming success.
+        if (cancelled && err instanceof Error && err.name === "AbortError") done();
         else error(err);
       })
       .catch(() => {});
     return {
       push: (chunk) => {
-        if (stopped) return;
+        if (inputClosed || settled) return;
         total += chunk.length;
         if (total > MAX_STREAM_BYTES) return failWith("caption stream limit reached");
         if (!queue.push(chunk)) failWith("caption buffer full");
       },
       end: () => {
-        stopped = true;
+        if (inputClosed || settled) return;
+        inputClosed = true;
         queue.end();
       },
       cancel,

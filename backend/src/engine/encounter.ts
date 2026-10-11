@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { EncounterState, PatientCase, Turn } from "@casecoach/shared";
+import { STUDENT_TURN_MAX_CHARACTERS, STUDENT_TURN_MAX_BYTES, studentTurnLimitError } from "@casecoach/shared";
 import type { CaseRepository } from "../cases/caseRepository.js";
 import type { LlmRoles } from "../llm/llm.js";
 import type { SessionStore } from "../sessions/sessionStore.js";
@@ -24,9 +25,9 @@ export class EncounterError extends Error {
   }
 }
 
-export const MAX_TURN_CHARS = 1000;
+export const MAX_TURN_CHARS = STUDENT_TURN_MAX_CHARACTERS;
 /** UTF-8 cap on one student turn, so multi-byte text can't blow the session item size. */
-export const MAX_TURN_BYTES = 2_000;
+export const MAX_TURN_BYTES = STUDENT_TURN_MAX_BYTES;
 /** Serialized session budget, kept under DynamoDB's 400 KiB item limit with headroom. */
 export const MAX_SESSION_BYTES = 350_000;
 export const MAX_STUDENT_TURNS = 60;
@@ -88,7 +89,7 @@ export async function getActiveEncounter(deps: EngineDeps, sessionId: string) {
 export async function runTurn(deps: EngineDeps, sessionId: string, rawText: string): Promise<TurnResult> {
   const text = rawText.trim();
   if (!text) throw new EncounterError("EMPTY_TURN");
-  if (text.length > MAX_TURN_CHARS || Buffer.byteLength(text, "utf8") > MAX_TURN_BYTES) {
+  if (studentTurnLimitError(text)) {
     throw new EncounterError("TURN_TOO_LONG");
   }
 

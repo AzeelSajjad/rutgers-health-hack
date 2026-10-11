@@ -1,13 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import type { PatientCase, ServerMessage } from "@casecoach/shared";
 import { createSessionHandler, type HandlerDeps } from "../src/ws/sessionHandler.js";
+import { LocalResourceLimits } from "../src/security/resourceLimits.js";
 import { InMemorySessionStore } from "../src/sessions/sessionStore.js";
 import { makeCase } from "./fixtures.js";
 import { FakeLlm } from "./fakes/fakeLlm.js";
 import { FakeStt } from "./fakes/fakeStt.js";
 import { FakeTts } from "./fakes/fakeTts.js";
 
-function setup() {
+function setup(resources?: HandlerDeps["resources"]) {
   const llm = new FakeLlm();
   const stt = new FakeStt();
   const c = makeCase();
@@ -17,6 +18,7 @@ function setup() {
     sessions: new InMemorySessionStore(),
     cases: { get: async (id: string): Promise<PatientCase | null> => (id === c.id ? c : null) },
     stt,
+    resources,
     newId: () => "s1",
     log: () => {},
   };
@@ -229,23 +231,19 @@ describe("session handler", () => {
     ]);
   });
 
-  it("ignores callbacks from a caption stream that was replaced, and forwards the new one", async () => {
+  it("rejects duplicate starts and ignores callbacks after cancellation", async () => {
     const { handler, sent, stt } = setup();
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
+    await handler.onMessage(json({ type: "caption_start" }));
+    for (let index = 0; index < 100; index++) await handler.onMessage(json({ type: "caption_start" }));
+    expect(stt.starts).toHaveLength(1);
+    expect(sent.at(-1)).toMatchObject({type:"error"});
+    handler.onClose();
     sent.length = 0;
-    await handler.onMessage(json({ type: "caption_start" }));
-    await handler.onMessage(json({ type: "caption_start" }));
-    const [a, b] = stt.starts;
-    a.onCaption("stale words", true);
-    a.onDone();
-    a.onError(new Error("late failure"));
+    stt.starts[0].onCaption("stale", true);
+    stt.starts[0].onDone();
+    stt.starts[0].onError(new Error("late"));
     expect(sent).toEqual([]);
-    b.onCaption("fresh words", false);
-    b.onDone();
-    expect(sent).toEqual([
-      { type: "caption", text: "fresh words", isFinal: false },
-      { type: "caption_done" },
-    ]);
   });
 
   it("sends caption_done at most once per stream across the error and done paths", async () => {
@@ -265,7 +263,7 @@ describe("session handler", () => {
     sent.length = 0;
     stt.failStart = true;
     await expect(handler.onMessage(json({ type: "caption_start" }))).resolves.toBeUndefined();
-    expect(sent).toEqual([{ type: "error", message: "Something went wrong. Please try again." }]);
+    expect(sent).toEqual([{ type: "error", message: "Something went wrong. Please try again." }, { type: "caption_done" }]);
     expect(() => handler.onAudio(Buffer.from([1]))).not.toThrow();
   });
 
@@ -292,6 +290,7 @@ describe("session handler", () => {
 
       await handler.onMessage(json({ type: "caption_start" }));
       await handler.onMessage(json({ type: "caption_stop" }));
+      stt.starts[1].onDone();
       vi.advanceTimersByTime(120_000);
       expect(stt.starts[1].ended).toBe(1);
       expect(stt.starts[1].cancelled).toBe(0);
@@ -324,13 +323,41 @@ describe("session handler", () => {
     expect(stt.starts[0]).toMatchObject({ ended: 1, cancelled: 0 });
   });
 
-  it("a replacing caption_start cancels the previous stream", async () => {
+  it("keeps a gracefully finishing stream active until its terminal callback", async () => {
     const { handler, stt } = setup();
     await handler.onMessage(json({ type: "start_session", caseId: "test-case" }));
     await handler.onMessage(json({ type: "caption_start" }));
+    await handler.onMessage(json({ type: "caption_stop" }));
     await handler.onMessage(json({ type: "caption_start" }));
-    expect(stt.starts[0]).toMatchObject({ ended: 0, cancelled: 1 });
-    expect(stt.starts[1]).toMatchObject({ ended: 0, cancelled: 0 });
+    expect(stt.starts).toHaveLength(1);
+    stt.starts[0].onDone();
+    await handler.onMessage(json({ type: "caption_start" }));
+    expect(stt.starts).toHaveLength(2);
+    handler.onClose();
+  });
+
+  it("shares permits across connections and releases once on error, completion, cancellation and start failure", async () => {
+    const limits = new LocalResourceLimits();
+    const a = setup({limits, subject:"student"}), b = setup({limits, subject:"student"});
+    for (const client of [a,b]) await client.handler.onMessage(json({type:"start_session",caseId:"test-case"}));
+    await a.handler.onMessage(json({type:"caption_start"}));
+    await b.handler.onMessage(json({type:"caption_start"}));
+    expect(b.stt.starts).toHaveLength(0);
+    a.stt.starts[0].onError(new Error("network"));
+    a.stt.starts[0].onDone();
+    await b.handler.onMessage(json({type:"caption_start"}));
+    expect(b.stt.starts).toHaveLength(1);
+    b.handler.onClose();
+    b.stt.starts[0].onDone();
+    a.stt.failStart = true;
+    await a.handler.onMessage(json({type:"caption_start"}));
+    a.stt.failStart = false;
+    await a.handler.onMessage(json({type:"caption_start"}));
+    expect(a.stt.starts).toHaveLength(2);
+    a.stt.starts[1].onDone();
+    await b.handler.onMessage(json({type:"caption_start"}));
+    expect(b.stt.starts).toHaveLength(2);
+    b.handler.onClose();
   });
 
   it("onClose cancels the open caption stream", async () => {

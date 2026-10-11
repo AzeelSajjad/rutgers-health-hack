@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, CircleDot, CirclePlus, LayoutGrid, PanelLeftClose, PanelLeftOpen, Check, ChevronDown, CircleHelp, MessageSquare, Mic, MicOff, MoreHorizontal, Pause, Play, Send, ShieldCheck, Sparkles, Square, Volume2, VolumeX, X } from 'lucide-react';
-import type { ChartResponse } from '@casecoach/shared';
+import { STUDENT_TURN_MAX_CHARACTERS, STUDENT_TURN_MAX_BYTES, studentTurnLimitError, type ChartResponse } from '@casecoach/shared';
 import { FacultyReview } from '../review/FacultyReview';
 import { RandomPatientCard } from '../library/RandomPatientCard';
 import { Avatar } from './Avatar';
@@ -47,6 +47,10 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
   const [pickOpen, setPickOpen] = useState(false), [helpOpen, setHelpOpen] = useState(false), [endOpen, setEndOpen] = useState(false);
   const [confirmPatient, setConfirmPatient] = useState<PatientPresentation | null>(null);
   const [audioReady, setAudioReady] = useState(false);
+  const [generatingPatient, setGeneratingPatient] = useState(false);
+  const generatingPatientRef = useRef(false);
+  const previewAudio = useRef<SpeechSynthesisUtterance | null>(null);
+  const playbackPaused = useRef(false);
   const [ending, setEnding] = useState(false);
   const endingRef = useRef(false);
   const markEnding = (value: boolean) => { endingRef.current = value; setEnding(value); };
@@ -85,7 +89,9 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
   const clearWait = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; };
   const stopAudio = () => {
     if (audio.current) { audio.current.onplay = null; audio.current.onended = null; audio.current.onerror = null; }
-    audio.current?.pause(); window.speechSynthesis?.cancel(); setAudioReady(false);
+    audio.current?.pause();
+    if (previewAudio.current) { previewAudio.current.onstart = null; previewAudio.current.onend = null; previewAudio.current.onerror = null; }
+    previewAudio.current = null; playbackPaused.current = false; window.speechSynthesis?.cancel(); setAudioReady(false);
     if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
     audioUrl.current = null; audio.current = null;
   };
@@ -132,10 +138,12 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
   };
   const speakPreview = (text: string) => {
     if (viewRef.current !== 'encounter' || mutedRef.current || !window.speechSynthesis) { setPhase('ready'); return; }
+    stopAudio();
     const gen = generation.current, utterance = new SpeechSynthesisUtterance(text);
+    previewAudio.current = utterance; setAudioReady(true);
     utterance.rate = .92;
-    utterance.onstart = () => { if (gen === generation.current) setPhase('speaking'); };
-    utterance.onend = utterance.onerror = () => { if (gen === generation.current) setPhase('ready'); };
+    utterance.onstart = () => { if (gen === generation.current && previewAudio.current === utterance) setPhase('speaking'); };
+    utterance.onend = utterance.onerror = () => { if (gen === generation.current && previewAudio.current === utterance) { previewAudio.current = null; playbackPaused.current = false; setAudioReady(false); setPhase('ready'); } };
     window.speechSynthesis.speak(utterance);
   };
   const playLiveAudio = async (base64: string | null) => {
@@ -151,7 +159,19 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
       await player.play().catch(() => { if (generation.current === gen) setPhase('ready'); });
     } catch { setPhase('ready'); setError('Patient audio was unavailable. You can read the reply.'); }
   };
+  const togglePlayback = () => {
+    if (phaseRef.current === 'speaking') {
+      if (previewAudio.current) window.speechSynthesis?.pause(); else audio.current?.pause();
+      playbackPaused.current = true; phaseRef.current = 'ready'; setPhase('ready');
+    } else if (previewAudio.current && playbackPaused.current) {
+      window.speechSynthesis?.resume(); playbackPaused.current = false; phaseRef.current = 'speaking'; setPhase('speaking');
+    } else {
+      playbackPaused.current = false;
+      void audio.current?.play().catch(() => setError('Your browser could not play this audio.'));
+    }
+  };
   const start = (resume = false) => {
+    if (generatingPatientRef.current) return;
     const retainedDraft = resume ? pendingText.current || draftRef.current : recoveredDraft.current?.caseId === patient.caseId ? recoveredDraft.current.text : '';
     cleanup(); setError(''); setDraft(retainedDraft); setPartial(''); setEndOpen(false);
     recoveredDraft.current = null;
@@ -247,7 +267,9 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
     socket.onerror = () => { if (gen === generation.current) setError('Could not connect to the encounter backend. Preview mode is available while it is being integrated.'); };
   };
   const send = () => {
-    const text = draftRef.current.trim(); if (!text || phaseRef.current !== 'ready' || captionState.current !== 'idle' || turnPending.current || endingRef.current || text.length > 1000) return;
+    const text = draftRef.current.trim();
+    const limitError = studentTurnLimitError(text); if (limitError) { setError(limitError); return; }
+    if (!text || phaseRef.current !== 'ready' || captionState.current !== 'idle' || turnPending.current || endingRef.current) return;
     phaseRef.current = 'thinking'; stopAudio(); setError(''); setDraft(''); turnPending.current = true; pendingText.current = text; pendingIndex.current = (turns.at(-1)?.index ?? -1) + 1; setPhase('thinking');
     if (mode === 'live') {
       if (ws.current?.readyState !== WebSocket.OPEN) { setDraft(text); setPhase('disconnected'); return; }
@@ -333,8 +355,9 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
   };
   const resetRecovery = () => { recoveredDraft.current = null; pendingText.current = ''; pendingIndex.current = null; finals.current = ''; setChart(null); setDisclosedFacts([]); setStyleLabel(''); };
   const changePatient = (next: PatientPresentation) => {
+    if (generatingPatientRef.current) return;
     if (next.key === patient.key) { setPickOpen(false); return; }
-    if (sessionId && phase !== 'ended') { setConfirmPatient(next); setPickOpen(false); return; }
+    if (sessionRef.current && phaseRef.current !== 'ended') { setConfirmPatient(next); setPickOpen(false); return; }
     cleanup(); resetRecovery(); setPatient(next); setTurns([]); setSessionId(null); sessionRef.current = null; setElapsed(0); setDraft(''); setError(''); setPhase('idle'); setPickOpen(false);
   };
   const switchConfirmed = () => {
@@ -343,10 +366,12 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
     if (mode === 'live' && sessionId && phase !== 'ended') { setError('End the current encounter first, then choose the other patient.'); setConfirmPatient(null); setEndOpen(true); return; }
     const next = confirmPatient; setConfirmPatient(null); cleanup(); resetRecovery(); setPatient(next); setTurns([]); setSessionId(null); sessionRef.current = null; setElapsed(0); setDraft(''); setError(''); setPhase('idle');
   };
+  const draftLimitError = studentTurnLimitError(draft.trim());
+  const draftBytes = new TextEncoder().encode(draft.trim()).byteLength;
   const active = sessionId !== null && phase !== 'ended';
   const canCompose = phase === 'ready' && !ending, busy = ['connecting', 'thinking', 'finishing'].includes(phase);
   const formattedTime = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
-  const openPatient = (next: PatientPresentation) => { changePatient(next); setView('encounter'); };
+  const openPatient = (next: PatientPresentation) => { if (generatingPatientRef.current) return; changePatient(next); viewRef.current = 'encounter'; setView('encounter'); };
   const navigate = (next: 'overview' | 'cases' | 'faculty') => {
     if (viewRef.current === 'encounter') {
       const capturing = phaseRef.current === 'recording' || phaseRef.current === 'finishing' || abortMic.current !== null;
@@ -382,7 +407,7 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
       <div className="page-heading"><div><div className="eyebrow"><span/>{view === 'overview' ? 'YOUR LEARNING SPACE' : view === 'cases' ? 'PRACTICE CASES' : view === 'faculty' ? 'FACULTY WORKSPACE' : 'PATIENT CONVERSATION'}</div><h1>{view === 'overview' ? 'Overview' : view === 'cases' ? 'Choose a patient' : view === 'faculty' ? 'Review clinical sessions' : 'Make space for their story.'}</h1><p>{view === 'overview' ? 'A space to build confidence in your clinical conversations.' : view === 'cases' ? 'Each simulated patient brings a different clinical focus and communication style.' : view === 'faculty' ? 'Review student conversations and plan your follow-up.' : 'Listen with curiosity. Ask with care. Take it one question at a time.'}</p></div>{view === 'encounter' ? <div className="session-tools"><div className="mode-select" aria-label="Experience mode"><button aria-pressed={mode === 'preview'} disabled={active || patient.key.startsWith('random-')} onClick={() => { cleanup(); setMode('preview'); setPhase('idle'); setError(''); }}>Preview</button><button aria-pressed={mode === 'live'} disabled={active || previewOnly} title={previewOnly ? 'Sign in to use live encounters' : undefined} onClick={() => { cleanup(); setMode('live'); setPhase('idle'); setError(''); }}>Live AI</button></div></div> : view === 'overview' ? <button className="primary-button" onClick={browseCases}>Browse practice cases <ArrowRight size={18}/></button> : view === 'cases' ? <div className="case-count"><CircleDot size={23}/><span><strong>2 cases</strong><small>Available to practice</small></span></div> : null}</div>
       {view === 'overview' && <div className="overview-grid"><section className="overview-card"><div className="eyebrow">A GENTLE PLACE TO BEGIN</div><h2>Choose a case to begin</h2><p>Practice a focused interview with a virtual patient. Speak or type, review your words, and listen to their reply.</p><button className="text-link" onClick={browseCases}>Choose a patient <ArrowRight size={16}/></button></section><section className="overview-card"><div className="eyebrow">YOUR PRACTICE EXPERIENCE</div><h2>Two perspectives. Room to listen.</h2><p>Meet Wyatt and Yvette. Start with scripted preview, or connect to the encounter backend for live AI.</p><button className="text-link" onClick={() => setHelpOpen(true)}>How it works <ArrowRight size={16}/></button></section></div>}
       {view === 'faculty' && canReview && getAccessToken && <FacultyReview getAccessToken={getAccessToken}/>}
-      {view === 'cases' && <><div className="patient-cards">{patients.map((p, i) => <article className="patient-card" key={p.key}><div className="case-card-top"><span className={`patient-initials ${p.key}`}>{p.initials}</span><span>CASE {String(i + 1).padStart(2, '0')}</span></div><h2>{p.name}</h2><p className="case-summary">{p.subtitle}</p><div className="case-details"><span className="detail-label">PRACTICE FOCUS</span><strong>{p.visit}</strong><span className="detail-label">PATIENT</span><strong>{p.age} years</strong><span className="detail-label">CONVERSATION APPROACH</span><p>Listen with curiosity. Take it one question at a time.</p></div><button className="case-start" onClick={() => openPatient(p)}>{active && patient.key === p.key ? 'Return to encounter' : 'Start encounter'}<ArrowRight size={18}/></button></article>)}{!previewOnly && <RandomPatientCard getAccessToken={getAccessToken} disabled={active} onCreated={p => { changePatient(p); setMode('live'); setView('encounter'); }}/>}</div><p className="case-disclaimer"><CircleHelp size={17}/>Patient details follow the provided sample cases. Avatar illustrations and dialogue are authored simulation choices.</p></>}
+      {view === 'cases' && <><div className="patient-cards">{patients.map((p, i) => <article className="patient-card" key={p.key}><div className="case-card-top"><span className={`patient-initials ${p.key}`}>{p.initials}</span><span>CASE {String(i + 1).padStart(2, '0')}</span></div><h2>{p.name}</h2><p className="case-summary">{p.subtitle}</p><div className="case-details"><span className="detail-label">PRACTICE FOCUS</span><strong>{p.visit}</strong><span className="detail-label">PATIENT</span><strong>{p.age} years</strong><span className="detail-label">CONVERSATION APPROACH</span><p>Listen with curiosity. Take it one question at a time.</p></div><button className="case-start" disabled={generatingPatient} onClick={() => openPatient(p)}>{active && patient.key === p.key ? 'Return to encounter' : 'Start encounter'}<ArrowRight size={18}/></button></article>)}{!previewOnly && <RandomPatientCard getAccessToken={getAccessToken} disabled={active || phase === 'connecting'} onBusyChange={busy => { generatingPatientRef.current = busy; setGeneratingPatient(busy); }} onCreated={p => { if (viewRef.current !== 'cases' || sessionRef.current && phaseRef.current !== 'ended' || phaseRef.current === 'connecting') return; generatingPatientRef.current = false; setGeneratingPatient(false); changePatient(p); setMode('live'); viewRef.current = 'encounter'; setView('encounter'); }}/>}</div><p className="case-disclaimer"><CircleHelp size={17}/>Patient details follow the provided sample cases. Avatar illustrations and dialogue are authored simulation choices.</p></>}
       <div hidden={view !== 'encounter'}>
       <div className="encounter-layout">
         <section className="encounter-panel" aria-label="Patient encounter">
@@ -390,9 +415,10 @@ export function App({ accountName = 'CaseCoach learner', previewOnly = false, on
           <div className={`avatar-stage ${patient.key} ${phase}`}><div className="stage-grid"/><div className="stage-label"><span/>Virtual patient · Educational simulation</div><div className="portrait-halo"/><div className="avatar-position"><Avatar patient={patient} speaking={phase === 'speaking'}/></div><div className="avatar-name"><span>{patient.name.split(' ')[0]}</span><span>{patient.subtitle}</span></div><div className="stage-bottom"><div className={`connection-tag ${phase}`}><span/>{phase === 'idle' ? 'Ready to meet you' : phase === 'ended' ? 'Session ended' : phase === 'disconnected' ? 'Connection offline' : phase === 'connecting' ? 'Connecting…' : mode === 'preview' ? 'Preview conversation' : 'Connected to encounter'}</div><span>Illustrated avatar</span></div>
           {phase === 'ended' && <div className="end-overlay"><span className="complete-mark"><Check size={28}/></span><h2>A conversation worth practicing.</h2><p>{turns.filter(turn => turn.speaker === 'student').length} {turns.filter(turn => turn.speaker === 'student').length === 1 ? 'question' : 'questions'} · {formattedTime}<br/>{mode === 'preview' ? 'Preview complete. No transcript was uploaded.' : 'Encounter ended. Your backend controls transcript storage.'}</p><button className="primary-button" onClick={() => start(false)}>Practice again <ArrowRight size={17}/></button></div>}</div>
           <div className="conversation-control"><div className="status-line" role="status"><span className={`status-dot ${phase}`}/>{ending && phase === 'ready' ? 'The session could not finish. Retry ending the session.' : ending && phase === 'connecting' ? 'Saving your conversation…' : labels[phase]}</div>{partial && <p className="live-caption" aria-live="polite">{partial}</p>}
-            {phase === 'idle' ? <div className="start-area"><button className="primary-button" onClick={() => start()}>Begin conversation<ArrowRight size={17}/></button><span>{mode === 'preview' ? 'Try the flow with scripted replies' : 'Connect to the patient AI and voice backend'}</span></div> : phase === 'ended' ? <p className="control-hint">Choose another patient or practice this conversation again.</p> : phase === 'disconnected' ? <button className="primary-button" onClick={() => start(true)}>Reconnect to session <ArrowRight size={17}/></button> : <><div className="voice-controls"><button className="round-button" onClick={() => { stopAudio(); if (phase === 'speaking') setPhase('ready'); setMuted(!muted); }} aria-label={muted ? 'Enable patient audio' : 'Mute patient audio'}>{muted ? <VolumeX size={20}/> : <Volume2 size={20}/>}</button><div className="microphone-wrap"><button className={`microphone-button ${phase === 'recording' ? 'is-recording' : ''}`} disabled={ending || (phase !== 'ready' && phase !== 'recording')} onClick={() => void record()} aria-label={phase === 'recording' ? 'Stop recording and review captions' : 'Start microphone'}>{phase === 'recording' ? <Square size={22} fill="currentColor"/> : <Mic size={26}/>}</button><span>{phase === 'recording' ? 'Stop & review' : busy ? 'Just a moment' : 'Tap to speak'}</span></div><button className="round-button" disabled={!audioReady && phase !== 'speaking'} onClick={() => { if (phase === 'speaking') { audio.current?.pause(); window.speechSynthesis?.cancel(); setPhase('ready'); } else void audio.current?.play().catch(() => setError('Your browser could not play this audio.')); }} aria-label={phase === 'speaking' ? 'Pause patient audio' : 'Play patient reply'}>{phase === 'speaking' ? <Pause size={20}/> : <Play size={20}/>}</button></div><p className="control-hint">{phase === 'recording' || phase === 'finishing' ? 'Captions are being collected. You can edit them when recording finishes.' : 'Review your words below before sending.'}</p></>}
+            {phase === 'idle' ? <div className="start-area"><button className="primary-button" onClick={() => start()}>Begin conversation<ArrowRight size={17}/></button><span>{mode === 'preview' ? 'Try the flow with scripted replies' : 'Connect to the patient AI and voice backend'}</span></div> : phase === 'ended' ? <p className="control-hint">Choose another patient or practice this conversation again.</p> : phase === 'disconnected' ? <button className="primary-button" onClick={() => start(true)}>Reconnect to session <ArrowRight size={17}/></button> : <><div className="voice-controls"><button className="round-button" onClick={() => { stopAudio(); if (phase === 'speaking') setPhase('ready'); setMuted(!muted); }} aria-label={muted ? 'Enable patient audio' : 'Mute patient audio'}>{muted ? <VolumeX size={20}/> : <Volume2 size={20}/>}</button><div className="microphone-wrap"><button className={`microphone-button ${phase === 'recording' ? 'is-recording' : ''}`} disabled={ending || (phase !== 'ready' && phase !== 'recording')} onClick={() => void record()} aria-label={phase === 'recording' ? 'Stop recording and review captions' : 'Start microphone'}>{phase === 'recording' ? <Square size={22} fill="currentColor"/> : <Mic size={26}/>}</button><span>{phase === 'recording' ? 'Stop & review' : busy ? 'Just a moment' : 'Tap to speak'}</span></div><button className="round-button" disabled={!audioReady && phase !== 'speaking'} onClick={togglePlayback} aria-label={phase === 'speaking' ? 'Pause patient audio' : 'Play patient reply'}>{phase === 'speaking' ? <Pause size={20}/> : <Play size={20}/>}</button></div><p className="control-hint">{phase === 'recording' || phase === 'finishing' ? 'Captions are being collected. You can edit them when recording finishes.' : 'Review your words below before sending.'}</p></>}
             {error && <div className="error-message" role="alert">{error}<button aria-label="Dismiss message" onClick={() => setError('')}><X size={14}/></button></div>}
-            {(active || draft) && <form className="composer" onSubmit={event => { event.preventDefault(); send(); }}><textarea ref={composer} aria-label="Your question" placeholder="Or type your question here…" value={draft} maxLength={1000} readOnly={!canCompose} aria-readonly={!canCompose} onChange={event => { if (canCompose) setDraft(event.target.value); }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}/><button aria-label="Send question" type="submit" disabled={!canCompose || !draft.trim()}><Send size={18}/></button></form>}
+            {(active || draft) && <form className="composer" onSubmit={event => { event.preventDefault(); send(); }}><textarea ref={composer} aria-label="Your question" placeholder="Or type your question here…" value={draft} aria-invalid={!!draftLimitError} aria-describedby="question-limits" readOnly={!canCompose} aria-readonly={!canCompose} onChange={event => { if (canCompose) setDraft(event.target.value); }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}/><button aria-label="Send question" type="submit" disabled={!canCompose || !draft.trim() || !!draftLimitError}><Send size={18}/></button></form>}
+            {(active || draft) && <p id="question-limits" role={draftLimitError ? "alert" : undefined}>{draft.trim().length}/{STUDENT_TURN_MAX_CHARACTERS} characters · {draftBytes}/{STUDENT_TURN_MAX_BYTES} UTF-8 bytes{draftLimitError && ` — ${draftLimitError} Shorten your question before sending.`}</p>}
             <div className="control-footer"><span><ShieldCheck size={14}/>A space to practice, not a clinical consultation.</span>{active && <button onClick={() => setEndOpen(true)} disabled={phase !== 'ready' && phase !== 'speaking'}>End session <ArrowRight size={13}/></button>}</div>
           </div>
         </section>
