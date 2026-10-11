@@ -70,3 +70,8 @@ Regression tests cover hosted signup/callbacks, preview after storage failures,
 exit while recording, late dictation and replies across patient switches, caption
 review, reply timeouts and failed-resume draft recovery. Auth0 tenant login and
 real microphone/AWS audio still require verification in the configured environment.
+
+Caption collection and patient-turn waiting use separate state and timeouts. The
+composer is read-only until final captions finish; recovered questions remain
+selectable after a failed resume. Prompt tests exercise the actual integrated
+engine and cases, rather than a separate frontend installation or snapshots.

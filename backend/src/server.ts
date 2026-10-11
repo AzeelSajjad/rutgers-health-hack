@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { ServerMessage } from "@casecoach/shared";
+import { registerCatalogRoute } from "./cases/catalogRoute.js";
 import { config } from "./config.js";
 import { createDeps } from "./deps.js";
 import { createSessionHandler } from "./ws/sessionHandler.js";
@@ -10,6 +11,7 @@ app.get("/health", async () => ({ ok: true }));
 
 const deps = createDeps();
 const allowedOrigins = new Set(config.allowedOrigins);
+registerCatalogRoute(app, deps.cases, allowedOrigins);
 const wss = new WebSocketServer({
   server: app.server,
   path: "/ws",

@@ -54,6 +54,12 @@ export const PatientCaseSchema = z
     styles: z.array(ResponseStyleSchema).min(1),
     initialStyleId: z.string().min(1),
     transitions: z.array(StyleTransitionSchema),
+    caseOrigin: z.object({
+      kind: z.literal("mimic_iv_demo"), version: z.literal("2.2"),
+      citation: z.literal("https://doi.org/10.13026/dp1f-ex47"), license: z.literal("ODbL-1.0"),
+      clinicalReviewStatus: z.enum(["not_reviewed", "reviewed"]),
+      sourceSubjectId: z.string().regex(/^\d+$/), sourceAdmissionId: z.string().regex(/^\d+$/),
+    }).optional(),
   })
   .superRefine((c, ctx) => {
     const styleIds = new Set(c.styles.map((s) => s.id));

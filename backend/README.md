@@ -104,3 +104,5 @@ TypeScript helpers in `app/sessions.ts` connect the existing backend to one Dyna
 table and one private S3 bucket. Setup, teammate integration, and a short demo
 explanation are in `docs/aws-sessions.md`. Run `npm run aws:check` to check your local
 AWS login. Authentication and HTTP routes remain in the existing backend.
+
+Additional public-demo patient import: see [docs/mimic-demo.md](docs/mimic-demo.md).

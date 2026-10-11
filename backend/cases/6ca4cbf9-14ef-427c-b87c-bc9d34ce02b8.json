@@ -47,7 +47,7 @@
     {
       "id": "overwhelmed",
       "label": "Overwhelmed",
-      "description": "Curious and earnest but overwhelmed by medical explanations. Asks for simple focused clarification.",
+      "description": "Curious, earnest and overwhelmed. Takes one question at a time.",
       "mayMinimize": false
     },
     {
