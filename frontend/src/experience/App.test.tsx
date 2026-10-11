@@ -64,11 +64,11 @@ describe('encounter lifecycle regression coverage', () => {
 
   it('locks the composer until recognition ends so final captions cannot overwrite edits', () => {
     open(); fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }));
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Stop recording and review captions' }));
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(true);
     act(() => Recognition.instance.onend?.());
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(false);
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(false);
   });
 
   it('discards pending replies and stale dictation when switching patients', () => {
@@ -108,7 +108,7 @@ describe('encounter lifecycle regression coverage', () => {
     question('Tell me about your diet'); socket.receive({ type: 'patient_thinking' });
     socket.receive({ type: 'caption_done' });
     socket.receive({ type: 'error', message: 'Old speech failure' });
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(true);
     act(() => vi.advanceTimersByTime(90000));
     expect(screen.getByRole('button', { name: 'Reconnect to session' })).toBeTruthy();
   });
