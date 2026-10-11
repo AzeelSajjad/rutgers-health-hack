@@ -28,12 +28,12 @@ class Recognition {
 const question = () => screen.getByRole('textbox', { name: 'Your question' }) as HTMLTextAreaElement;
 const started = (resumed = false, transcript: unknown[] = []) => ({ type: 'session_started', resumed, sessionId: 'session-1', patient: { name: 'Wyatt Nelson', age: 18, visitReason: 'Nutrition' }, transcript, disclosedFacts: [], styleLabel: 'Reserved' });
 async function enterLive() {
-  render(<App/>);
+  render(<App getAccessToken={async () => "test-token"}/>);
   fireEvent.click(screen.getAllByRole('button', { name: 'Start encounter' })[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Live AI' }));
   fireEvent.click(screen.getByRole('button', { name: 'Begin conversation' }));
   const socket = Socket.instances.at(-1)!;
-  act(() => socket.onopen?.()); socket.event(started()); return socket;
+  await act(async () => socket.onopen?.()); socket.event({type:"authenticated"}); socket.event(started()); return socket;
 }
 async function beginCapture() { await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start microphone' }))); }
 function send(text: string) { fireEvent.change(question(), { target: { value: text } }); fireEvent.click(screen.getByRole('button', { name: 'Send question' })); }
@@ -91,17 +91,17 @@ describe('caption and pending question regressions', () => {
     const socket = await enterLive(); send('Could you tell me more?'); act(() => socket.close());
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect to session' }));
     expect(question().value).toBe('Could you tell me more?');
-    const resumed = Socket.instances.at(-1)!; act(() => resumed.onopen?.());
+    const resumed = Socket.instances.at(-1)!; await act(async () => resumed.onopen?.()); resumed.event({type:"authenticated"});
     resumed.event({ type: 'error', code: 'RESUME_FAILED', message: 'Session not found' });
     expect(question().value).toBe('Could you tell me more?');
     fireEvent.click(screen.getByRole('button', { name: 'Begin conversation' }));
-    Socket.instances.at(-1)!.event(started());
+    await act(async () => Socket.instances.at(-1)!.onopen?.()); Socket.instances.at(-1)!.event({type:'authenticated'}); Socket.instances.at(-1)!.event(started());
     expect(question().value).toBe('Could you tell me more?');
   });
   it('successful resume clears an acknowledged pending question to prevent duplicate sends', async () => {
     const socket = await enterLive(); send('Already saved'); act(() => socket.close());
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect to session' }));
-    Socket.instances.at(-1)!.event(started(true, [{ index: 0, speaker: 'student', text: 'Already saved', at: 'now' }]));
+    await act(async () => Socket.instances.at(-1)!.onopen?.()); Socket.instances.at(-1)!.event({type:'authenticated'}); Socket.instances.at(-1)!.event(started(true, [{ index: 0, speaker: 'student', text: 'Already saved', at: 'now' }]));
     expect(question().value).toBe('');
   });
 });

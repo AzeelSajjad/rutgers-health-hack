@@ -2,6 +2,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { EncounterState, PatientCase } from '@casecoach/shared';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { loadPatientProfile, type PatientProfile } from './profiles.js';
 
@@ -26,6 +27,9 @@ interface SessionRecord extends SessionMetadata {
   archive_key?: string;
   archive_version?: string;
   archive_sha256?: string;
+  /** Server-only engine snapshot; projected metadata never includes hidden facts. */
+  encounter_state?: EncounterState;
+  encounter_case?: PatientCase;
 }
 export interface ChatMessage {
   turn_id: string; sequence: number; role: 'student' | 'patient'; text: string;
@@ -59,8 +63,56 @@ export class SessionStorage {
   private readonly s3: Pick<S3Client, 'send'>;
   constructor(private readonly options: SessionStorageOptions) {
     requireInput(Boolean(options.tableName && options.bucketName), 'Table and bucket names are required');
-    this.dynamo = options.dynamo ?? DynamoDBDocumentClient.from(new DynamoDBClient({ region: options.region }));
+    this.dynamo = options.dynamo ?? DynamoDBDocumentClient.from(new DynamoDBClient({ region: options.region }), { marshallOptions: { removeUndefinedValues: true } });
     this.s3 = options.s3 ?? new S3Client({ region: options.region });
+  }
+  /** Internal engine adapter: authentication is enforced by the connection's owner-scoped store. */
+  async readEncounterRecord(sessionId: string): Promise<SessionRecord | null> {
+    const response = await this.dynamo.send(new GetCommand({ TableName: this.options.tableName, Key: { pk: `SESSION#${sessionId}`, sk: 'META' }, ConsistentRead: true }));
+    return (response.Item as SessionRecord | undefined) ?? null;
+  }
+  async createEncounter(state: EncounterState, patientCase: PatientCase): Promise<void> {
+    requireInput(Boolean(state.ownerSub?.trim()), 'A verified encounter owner is required');
+    requireInput(state.status === 'active' && state.turns.length === 0 && patientCase.id === state.caseId, 'Invalid initial encounter state');
+    const profile = loadPatientProfile(state.caseId);
+    const row: SessionRecord = {
+      pk: `SESSION#${state.sessionId}`, sk: 'META', list_pk: 'SESSIONS', list_sk: `${state.createdAt}#${state.sessionId}`,
+      session_id: state.sessionId, patient_id: state.caseId, patient_version: profile.version,
+      owner_sub: state.ownerSub!, status: 'active', revision: 0, turn_count: 0,
+      created_at: state.createdAt, updated_at: state.createdAt,
+      profile_snapshot: profile, disclosed_fact_ids: [...state.disclosedFactIds],
+      encounter_state: { ...state, revision: 0 }, encounter_case: patientCase,
+    };
+    this.checkRecordSize(row);
+    await this.dynamo.send(new TransactWriteCommand({ TransactItems: [{ Put: { TableName: this.options.tableName, Item: row, ConditionExpression: 'attribute_not_exists(pk)' } }] }));
+    state.revision = 0;
+  }
+  private checkRecordSize(row: SessionRecord): void {
+    requireInput(Buffer.byteLength(JSON.stringify(row), 'utf8') < 390_000, 'Encounter storage budget exceeded');
+  }
+  async saveEncounter(state: EncounterState): Promise<void> {
+    requireInput(Boolean(state.ownerSub?.trim()), 'A verified encounter owner is required');
+    const actor: SessionActor = { subject: state.ownerSub!, role: 'student' };
+    const row = await this.record(actor, state.sessionId, true);
+    if (!row.encounter_state || row.patient_id !== state.caseId || row.revision !== state.revision) throw new SessionConflictError('Encounter changed; reload its state');
+    if (state.status === 'ended') {
+      await this.finishSession(actor, state.sessionId);
+      return;
+    }
+    if (row.status !== 'active') throw new SessionConflictError('Encounter is closed');
+    const previousTurns = row.encounter_state.turns;
+    requireInput(state.turns.length === previousTurns.length + 2 && JSON.stringify(state.turns.slice(0, previousTurns.length)) === JSON.stringify(previousTurns), 'Only a new student/patient exchange may be appended');
+    const added = state.turns.slice(previousTurns.length);
+    requireInput(added[0].speaker === 'student' && added[1].speaker === 'patient' && added.every((turn, index) => turn.index === previousTurns.length + index), 'Invalid encounter turn order');
+    added.forEach(turn => checkText(turn.text));
+    const revision = row.revision + 1;
+    const next: SessionRecord = { ...row, revision, turn_count: state.turns.length, updated_at: added[1].at, disclosed_fact_ids: [...state.disclosedFactIds], encounter_state: { ...state, revision } };
+    this.checkRecordSize(next);
+    await this.dynamo.send(new TransactWriteCommand({ TransactItems: [
+      { Put: { TableName: this.options.tableName, Item: next, ConditionExpression: '#status = :active AND revision = :expected AND owner_sub = :owner', ExpressionAttributeNames: { '#status': 'status' }, ExpressionAttributeValues: { ':active': 'active', ':expected': row.revision, ':owner': actor.subject } } },
+      ...added.map((turn, index) => ({ Put: { TableName: this.options.tableName, Item: { pk: row.pk, sk: turnKey(previousTurns.length + index + 1), turn_id: `turn-${previousTurns.length + index + 1}`, sequence: previousTurns.length + index + 1, role: turn.speaker, text: turn.text, created_at: turn.at, disclosed_fact_ids: turn.newlyDisclosedFactIds ?? [] }, ConditionExpression: 'attribute_not_exists(pk)' } })),
+    ] }));
+    state.revision = revision;
   }
   private async record(actor: SessionActor, sessionId: string, ownerOnly = false): Promise<SessionRecord> {
     checkActor(actor);
@@ -93,6 +145,7 @@ export class SessionStorage {
   /** Trusted encounter handler supplies validated patient text and disclosures. */
   async appendExchange(actor: SessionActor, sessionId: string, exchange: { expectedRevision: number; studentText: string; patientText: string; disclosedFactIds?: readonly string[] }): Promise<SessionMetadata> {
     const record = await this.record(actor, sessionId, true);
+    if (record.encounter_state) throw new SessionConflictError('Live encounters must use the validated encounter engine');
     requireInput(Number.isInteger(exchange.expectedRevision) && exchange.expectedRevision >= 0, 'Expected revision must be a nonnegative integer');
     checkText(exchange.studentText); checkText(exchange.patientText);
     const released = exchange.disclosedFactIds ?? [];

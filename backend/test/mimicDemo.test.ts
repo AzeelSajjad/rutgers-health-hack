@@ -89,7 +89,7 @@ it('generates distinct encounter IDs, avoids consecutive source repeats, and kee
     for(const [name,rows] of Object.entries({patients:data.patients,admissions:data.admissions,diagnoses_icd:data.diagnoses,d_icd_diagnoses:data.dictionary})){
       const columns=Object.keys(rows[0]);await writeFile(join(dir,`hosp-${name}.csv.gz`),gzipSync(columns.join(',')+'\n'+rows.map(row=>columns.map(key=>row[key]).join(',')).join('\n')));
     }
-    const repo=new FileCaseRepository([],dir),app=Fastify();registerCatalogRoute(app,repo,new Set(['http://localhost']));
+    const repo=new FileCaseRepository([],undefined,dir),app=Fastify();registerCatalogRoute(app,repo,new Set(['http://localhost']));
     const first=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
     const second=await app.inject({method:'POST',url:'/api/cases/random',headers:{origin:'http://localhost'}});
     expect(first.statusCode).toBe(200);expect(Object.keys(first.json()).sort()).toEqual(['caseId','patient']);

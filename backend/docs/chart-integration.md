@@ -80,4 +80,4 @@ supported measurement shapes, finite numeric values, and explicit units/nulls.
 The chart derives its values directly from those facts so a second clinical value
 store cannot drift from the profile. Structural validation is not clinical review.
 
-Run from `backend/`: `npm run typecheck && npm test && npm run build`.
+Run from the repository root: `npm run typecheck` and `npm test`.

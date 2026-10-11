@@ -2,8 +2,8 @@
 
 CaseCoach's first backend feature contains exactly two predefined patients from
 `faculty-provided-sample-patient-details.csv`. Customization is future work.
-The profile library provides no HTTP server or AI conversation engine. Demo AWS
-session storage is available separately; see the session storage section below.
+The profile library feeds the live WebSocket encounter engine in `src`. DynamoDB
+session storage and private S3 transcript archival use the deployment described below.
 
 Chart preparation and validation are available in `app/chart.ts`. The frontend
 handoff is documented in `docs/chart-integration.md`, with TypeScript types in
@@ -32,21 +32,20 @@ been checked.
 
 ## Run
 
-Node.js 22+ and npm. From `backend/`:
+Node.js 22.12+ and npm (the repository `.nvmrc` pins a tested version). From the repository root:
 
 ```sh
 npm ci
 npm run typecheck
 npm test
-npm run build
-node --input-type=module -e 'import { listPatientCards } from "./dist/app/index.js"; console.log(JSON.stringify(listPatientCards(), null, 2))'
+npm run dev --workspace backend
 ```
 
 Rebuild the two JSON profiles from the supplied CSV using the bundled reviewed
 case mappings and authored simulation rules:
 
 ```sh
-npm run import:profiles -- '/path/to/faculty-provided-sample-patient-details.csv'
+npm run import:profiles --workspace backend -- '/path/to/faculty-provided-sample-patient-details.csv'
 ```
 
 The importer selects only Wyatt and Yvette, rejects missing/duplicate selected
@@ -54,6 +53,11 @@ rows, and preserves their original records. Its fact mappings apply to these
 specific source notes; changed notes or personality require a mapping review rather than silently
 using old clinical values. `--output-directory` can target a scratch directory.
 The original CSV is not required at runtime; each JSON contains its source row.
+The encounter cases are derived from these profiles at load time, including fact
+text, disclosure, identity, and learning objectives. `cases/*.simulation.json`
+contains only authored presentation/response styles; it cannot override clinical
+facts or identity. The standalone Morgan Lee fixture remains in `cases` for engine
+tests. Do not copy clinical facts into simulation metadata.
 
 ## Backend functions
 

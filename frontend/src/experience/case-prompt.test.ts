@@ -1,11 +1,11 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { PatientCaseSchema } from '@casecoach/shared';
+import { fileURLToPath } from 'node:url';
+import { FileCaseRepository } from '../../../backend/src/cases/caseRepository';
 import { buildPatientSystemPrompt } from '../../../backend/src/engine/patientPrompt';
 import { patients } from './patients';
-for (const patient of patients) test(`${patient.name} initial engine prompt excludes gated details until released`, () => {
-  const c = PatientCaseSchema.parse(JSON.parse(readFileSync(new URL(`../../../backend/cases/${patient.caseId}.json`, import.meta.url), 'utf8')));
+for (const patient of patients) test(`${patient.name} initial engine prompt excludes gated details until released`, async () => {
+  const c = (await new FileCaseRepository(fileURLToPath(new URL('../../../backend/cases', import.meta.url))).get(patient.caseId))!;
   const initialIds = c.facts.filter(f => f.disclosure === 'atStart').map(f => f.id);
   const initial = buildPatientSystemPrompt(c, c.initialStyleId, initialIds);
   for (const fact of c.facts.filter(f => f.disclosure !== 'atStart')) {

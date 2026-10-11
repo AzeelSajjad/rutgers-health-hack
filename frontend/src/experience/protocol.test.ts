@@ -21,12 +21,11 @@ test('transcript upserts replayed turns and sorts by backend index', () => {
 test('both selectable patients map to independently authored backend cases', () => {
   assert.equal(new Set(patients.map(p => p.caseId)).size, 2);
   for (const patient of patients) {
-    const source = JSON.parse(readFileSync(new URL(`../../../backend/cases/${patient.caseId}.json`, import.meta.url), 'utf8'));
+    const source = JSON.parse(readFileSync(new URL(`../../../backend/data/profiles/${patient.key === 'wyatt' ? 'wyatt-nelson' : 'yvette-armstrong'}.json`, import.meta.url), 'utf8'));
     assert.equal(source.id, patient.caseId);
-    assert.equal(source.patientName, patient.name);
-    assert.equal(source.age, patient.age);
-    assert.deepEqual(source.pertinentNegatives, []);
-    assert.equal(source.source.clinicalReviewStatus, 'not_reviewed');
+    assert.equal(source.identity.name, patient.name);
+    assert.equal(source.identity.age, patient.age);
+    assert.equal(source.provenance.clinical_review_status, 'not_reviewed');
     assert.ok(!Object.hasOwn(patient, 'facts'));
     assert.ok(!Object.hasOwn(patient, 'styles'));
   }

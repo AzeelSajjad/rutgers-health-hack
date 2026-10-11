@@ -8,24 +8,55 @@ vi.mock('@auth0/auth0-spa-js', () => ({ createAuth0Client: vi.fn() }));
 const auth = {
   handleRedirectCallback: vi.fn(), isAuthenticated: vi.fn(), getUser: vi.fn(),
   loginWithRedirect: vi.fn(), logout: vi.fn(),
+  getTokenSilently: vi.fn(),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   HTMLElement.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('scrollTo', vi.fn());
-  window.CASECOACH_AUTH0 = { domain: 'school.example.auth0.com', clientId: 'public-spa-id' };
+  window.CASECOACH_AUTH0 = { domain: 'school.example.auth0.com', clientId: 'public-spa-id', audience: 'https://casecoach.example/api' };
   window.history.replaceState({}, '', '/');
   auth.isAuthenticated.mockResolvedValue(false);
   auth.getUser.mockResolvedValue({ sub: 'test-student', name: 'Test learner' });
   auth.handleRedirectCallback.mockResolvedValue({ appState: { casecoachAccountType: 'faculty' } });
   auth.loginWithRedirect.mockResolvedValue(undefined);
   auth.logout.mockResolvedValue(undefined);
+  auth.getTokenSilently.mockResolvedValue('verified-access-token');
   vi.mocked(createAuth0Client).mockResolvedValue(auth as never);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('unified landing and authentication', () => {
+  it('requests an API audience from Auth0 and supplies access tokens only when connecting live encounters', async () => {
+    auth.isAuthenticated.mockResolvedValue(true);
+    const OriginalWebSocket = window.WebSocket;
+    class TestWebSocket {
+      static OPEN = 1;
+      readyState = 0;
+      sent: string[] = [];
+      onopen?: () => void;
+      onclose?: () => void;
+      onmessage?: (event: { data: string }) => void;
+      close() { this.readyState = 3; }
+      send(value: string) { this.sent.push(value); }
+      constructor() { sockets.push(this); }
+    }
+    const sockets: TestWebSocket[] = [];
+    vi.stubGlobal('WebSocket', TestWebSocket);
+    render(<AuthApp/>);
+    await screen.findByText('Choose a patient');
+    expect(createAuth0Client).toHaveBeenCalledWith(expect.objectContaining({ authorizationParams: { redirect_uri: window.location.origin, audience: 'https://casecoach.example/api' } }));
+    expect(auth.getTokenSilently).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Start encounter' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Begin conversation' }));
+    await waitFor(() => expect(sockets.length).toBe(1));
+    sockets[0]!.readyState = 1;
+    sockets[0]!.onopen?.();
+    await waitFor(() => expect(auth.getTokenSilently).toHaveBeenCalledWith({ detailedResponse: false }));
+    await waitFor(() => expect(sockets[0]!.sent).toContain(JSON.stringify({ type: 'authenticate', token: 'verified-access-token' })));
+    vi.stubGlobal('WebSocket', OriginalWebSocket);
+  });
   it('keeps student/faculty signup on hosted Auth0 without granting roles', async () => {
     render(<AuthApp/>);
     await waitFor(() => expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(false));

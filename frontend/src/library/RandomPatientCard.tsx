@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import type { PatientPresentation } from '../experience/patients';
-export function RandomPatientCard({ disabled, onCreated }: { disabled: boolean; onCreated: (patient: PatientPresentation) => void }) {
+export function RandomPatientCard({ disabled, onCreated, getAccessToken }: { getAccessToken?: () => Promise<string>; disabled: boolean; onCreated: (patient: PatientPresentation) => void }) {
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   async function generate() {
     setBusy(true);setError('');
     try {
-      const response=await fetch('/api/cases/random',{method:'POST'}), data=await response.json();
+      const token = getAccessToken ? await getAccessToken() : undefined;
+      const response=await fetch('/api/cases/random',{method:'POST', ...(token ? {headers:{Authorization:`Bearer ${token}`}} : {})}), data=await response.json();
       if(!response.ok)throw new Error(data.error || 'Patient generation is unavailable. Try again.');
       if(typeof data.caseId!=='string'||!/^random-[a-z0-9-]+$/.test(data.caseId)||typeof data.patient?.name!=='string'||!data.patient.name.trim()||!Number.isInteger(data.patient.age)||data.patient.age<18||typeof data.patient.visitReason!=='string')throw new Error('Invalid generated patient response.');
       onCreated({key:data.caseId,caseId:data.caseId,name:data.patient.name,age:data.patient.age,visit:data.patient.visitReason,initials:data.patient.name.split(' ').map((word:string)=>word[0]).slice(0,2).join(''),subtitle:'MIMIC-IV public demo · invented name',accent:'sage',previewOpening:'',prompts:['What would you like to discuss about your hospital history?']});

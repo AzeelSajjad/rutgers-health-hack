@@ -75,7 +75,12 @@ export async function startEncounter(deps: EngineDeps, caseId: string) {
 export async function getActiveEncounter(deps: EngineDeps, sessionId: string) {
   const state = await deps.sessions.get(sessionId);
   if (!state) throw new EncounterError("SESSION_NOT_FOUND");
-  if (state.status !== "active") throw new EncounterError("SESSION_ENDED");
+  if (state.status !== "active") {
+    // A previous end may have frozen the transcript while S3 was unavailable.
+    // Retry its archive on reconnect, and retain the session handle on transient failures.
+    await deps.sessions.finalizePending?.(sessionId);
+    throw new EncounterError("SESSION_ENDED");
+  }
   const patientCase = await deps.sessions.getPatientCase?.(sessionId) ?? await loadCase(deps, state.caseId);
   return { state, patientCase };
 }

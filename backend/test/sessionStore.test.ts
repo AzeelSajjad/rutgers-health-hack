@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { EncounterState } from "@casecoach/shared";
 import { DynamoSessionStore, InMemorySessionStore } from "../src/sessions/sessionStore.js";
+import { SessionStorage } from "../app/sessions.js";
+import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 const state = (): EncounterState => ({
   sessionId: "s1",
@@ -37,15 +39,16 @@ describe("InMemorySessionStore", () => {
 
 describe("DynamoSessionStore", () => {
   it("reads with ConsistentRead so a resume sees the latest saved turn", async () => {
-    const store = new DynamoSessionStore("us-east-1", "sessions");
     const inputs: Record<string, unknown>[] = [];
-    (store as unknown as { doc: { send: (c: { input: Record<string, unknown> }) => Promise<unknown> } }).doc = {
-      send: async (c) => {
+    const dynamo = {
+      send: async (c: { input: Record<string, unknown> }) => {
         inputs.push(c.input);
-        return { Item: state() };
+        return { Item: { encounter_state: state(), status: 'active', owner_sub: 'student-a', revision: 0 } };
       },
     };
-    expect(await store.get("s1")).toEqual(state());
-    expect(inputs[0]).toMatchObject({ TableName: "sessions", Key: { sessionId: "s1" }, ConsistentRead: true });
+    const storage = new SessionStorage({ tableName: 'sessions', bucketName: 'transcripts', dynamo: dynamo as unknown as Pick<DynamoDBDocumentClient, 'send'> });
+    const store = new DynamoSessionStore("us-east-1", "sessions", "transcripts", storage);
+    expect(await store.get("s1")).toEqual({ ...state(), ownerSub: 'student-a', revision: 0 });
+    expect(inputs[0]).toMatchObject({ TableName: "sessions", Key: { pk: "SESSION#s1", sk: "META" }, ConsistentRead: true });
   });
 });

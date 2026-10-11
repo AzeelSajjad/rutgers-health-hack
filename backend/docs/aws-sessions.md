@@ -13,7 +13,6 @@ From `backend/`, with Node.js 22+:
 npm ci
 npm run typecheck
 npm test
-npm run build
 npm run aws:check
 ```
 
@@ -51,7 +50,50 @@ the script, `work/storage.env` contains the table/bucket/region names, not crede
 The table and bucket are retained if the stack is deleted; clean up explicitly after
 the demo, subject to workshop access. This stack has no automatic expiration policy.
 
-## Teammate integration
+## Live encounter integration
+
+The WebSocket encounter engine now uses this same table and transcript archive
+through `DynamoSessionStore` and `SessionStorage`. Load the resource names emitted
+by deployment before starting the backend from the repository root:
+
+```sh
+set -a
+. backend/work/storage.env
+set +a
+npm run start --workspace backend
+```
+
+`SESSION_TABLE_NAME` and `TRANSCRIPT_BUCKET_NAME` are required when `FAKE_AWS`
+is disabled. Missing configuration fails startup instead of silently storing
+sessions in memory. The old `SESSIONS_TABLE` name is accepted with a warning;
+conflicting old/new names fail. `FAKE_AWS=1` explicitly uses local scripted fakes
+and an in-memory session store without any storage credentials or resources.
+
+The authenticated connection supplies the owner; browser input cannot choose it.
+Configure `AUTH0_ISSUER_BASE_URL` (or `AUTH0_DOMAIN`) and `AUTH0_AUDIENCE` on the
+backend, with the same API identifier as frontend `VITE_AUTH0_AUDIENCE`. The server
+verifies the access token before session commands or audio, and scopes reads,
+writes, pinned-case access and archive retries to its subject. Expiration closes
+the connection. Missing authentication configuration fails closed. The explicit
+fake-AWS test identity is limited to loopback binding/peers and disabled when
+`NODE_ENV=production`; it is not a deployed authentication option.
+
+Creating a live encounter pins both the canonical profile and its engine case in
+`META`. A validated exchange atomically updates the engine snapshot, metadata, and
+two ordered `TURN#` records using owner, revision, and active-status conditions.
+Live encounters begin with zero transcript messages because the engine does not
+emit the profile's separate opening statement. Metadata and faculty message/archive
+helpers read the same records. `appendExchange` rejects live-engine records: writes
+must go through the validated encounter engine, keeping its snapshot in sync.
+
+Ending a live encounter freezes its record as `archiving`, uploads the complete
+transcript to encrypted, versioned S3, then marks it `completed`. Failed uploads
+leave it frozen and retryable. Repeating end or reconnecting retries the pending
+archive; it never accepts new messages while archiving. Existing encounters use
+their pinned engine case even if the canonical profile changes later. The engine
+snapshot, pinned cases, and storage keys are server-only data.
+
+## Additional trusted backend helpers
 
 ```typescript
 import { SessionStorage, buildChartResponse, type SessionActor } from './app/index.js';
@@ -100,8 +142,9 @@ facts. Do not accept patient replies or disclosure ids directly from the browser
 Return only chart projections and public metadata to students. Serve transcript
 responses through the faculty-authorized backend with `Cache-Control: no-store`.
 Do not log chat text, auth tokens, or transcript contents. No S3 URL or AWS credential
-is sent to the frontend. The helpers are implemented; HTTP routes are your teammate's
-integration responsibility, and are not deployed here.
+is sent to the frontend. The live WebSocket lifecycle is integrated. Additional
+HTTP faculty routes remain the backend's responsibility and must enforce a verified
+faculty role.
 
 ## Data and failure behavior
 
@@ -129,8 +172,10 @@ is safe to repeat. Faculty reads verify that version's SHA256 checksum.
 S3 blocks public access, disables ACLs, requires HTTPS, encrypts objects, and keeps
 versions. DynamoDB uses on-demand capacity and encryption. Backend permissions are
 limited to the created table/index and S3 `sessions/` objects, with no delete access.
-Authentication still depends on the existing backend integration; the adapter cannot
-verify an arbitrary `SessionActor` by itself.
+The live WebSocket server authenticates and checks ownership. Additional faculty
+HTTP routes are not exposed here: they must verify a trusted faculty role before
+calling these helpers. The storage adapter cannot verify an arbitrary
+`SessionActor` by itself.
 
 ## Demo explanation
 
@@ -153,7 +198,7 @@ CloudFormation accepted the small template. The resources have not been deployed
 
 Local tests cover access boundaries, hidden-state exclusion, message transactions,
 archive failure/retry, ordered transcript checks, and private storage configuration.
-They do not prove live IAM or your teammate's sign-in middleware. Before demoing,
+They do not prove live IAM or the configured Auth0 tenant. Before demoing,
 verify in AWS with two student identities and one faculty identity: deny cross-student
 access, complete a session, read its archive as faculty, deny student archive access,
 and confirm anonymous S3 access fails. No live deployment is claimed until tested.

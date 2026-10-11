@@ -7,9 +7,10 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('opens a generated patient inside the signed-in avatar experience without replacing the Auth0 route', async () => {
   vi.stubGlobal('scrollTo',vi.fn()); HTMLElement.prototype.scrollIntoView=vi.fn();
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({caseId:'random-test',patient:{name:'Alex Reed',age:62,visitReason:'Hospital history'}})}));
-  render(<App accountName="Test learner"/>);
+  render(<App accountName="Test learner" getAccessToken={async () => "signed-in-token"}/>);
   fireEvent.click(screen.getByRole('button',{name:'Generate random patient'}));
-  await screen.findByRole('button',{name:/Alex Reed 62/});
+  await screen.findByText('Alex Reed');
+  expect(fetch).toHaveBeenCalledWith('/api/cases/random',{method:'POST',headers:{Authorization:'Bearer signed-in-token'}});
   expect(screen.getByText('Test learner')).toBeTruthy();
   expect((screen.getByRole('button',{name:'Preview'}) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('button',{name:'Begin conversation'})).toBeTruthy();

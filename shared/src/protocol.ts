@@ -19,6 +19,10 @@ export interface Turn {
 }
 
 export interface EncounterState {
+  /** Verified Auth0 subject. Legacy ownerless sessions are never exposed over WebSocket. */
+  ownerSub?: string;
+  /** Persistence revision for optimistic concurrency. */
+  revision?: number;
   sessionId: string;
   caseId: string;
   status: "active" | "ended";
@@ -51,6 +55,7 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 export type ServerMessage =
+  | { type: "authenticated" }
   | {
       type: "session_started";
       sessionId: string;
@@ -75,4 +80,4 @@ export type ServerMessage =
     }
   | { type: "session_ended"; sessionId: string }
   /** scope "turn": the error answers a student_turn, so the client stops waiting and restores the question. */
-  | { type: "error"; message: string; code?: "RESUME_FAILED"; scope?: "turn" };
+  | { type: "error"; message: string; code?: "RESUME_FAILED" | "AUTH_REQUIRED" | "AUTH_FAILED" | "AUTH_EXPIRED"; scope?: "turn" };

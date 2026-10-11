@@ -1,7 +1,17 @@
-import type {FastifyInstance} from 'fastify';
+import type {FastifyInstance, FastifyRequest, FastifyReply} from 'fastify';
+import type { TokenVerifier } from '../security/auth.js';
 import type {CaseRepository} from './caseRepository.js';
-export function registerCatalogRoute(app: FastifyInstance, cases: CaseRepository, allowedOrigins: Set<string>) {
-  app.post('/api/cases/random', async(request,reply)=>{
+export function registerCatalogRoute(app: FastifyInstance, cases: CaseRepository, allowedOrigins: Set<string>, verifyAccessToken?: TokenVerifier) {
+  const authorize = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!verifyAccessToken) return;
+    try {
+      const header = request.headers.authorization;
+      if (typeof header !== "string" || !header.startsWith("Bearer ")) throw new Error();
+      const identity = await verifyAccessToken(header.slice(7), request.socket.remoteAddress);
+      if (!identity.sub || !Number.isFinite(identity.expiresAt) || identity.expiresAt <= Date.now()) throw new Error();
+    } catch { return reply.code(401).send({ error: "Sign in is required." }); }
+  };
+  app.post('/api/cases/random', { preHandler: authorize }, async(request,reply)=>{
     const origin=request.headers.origin;
     if(origin && !allowedOrigins.has(origin))return reply.code(403).send({error:'Origin not allowed'});
     if(origin)reply.header('Access-Control-Allow-Origin',origin).header('Vary','Origin');
@@ -14,7 +24,7 @@ export function registerCatalogRoute(app: FastifyInstance, cases: CaseRepository
       return reply.code(503).send({error:'Random patients are unavailable. Run the MIMIC demo import first.'});
     }
   });
-  app.get('/api/cases',async(request,reply)=>{
+  app.get('/api/cases', { preHandler: authorize }, async(request,reply)=>{
     const origin=request.headers.origin;
     if(origin && !allowedOrigins.has(origin))return reply.code(403).send({error:'Origin not allowed'});
     if(origin)reply.header('Access-Control-Allow-Origin',origin).header('Vary','Origin');

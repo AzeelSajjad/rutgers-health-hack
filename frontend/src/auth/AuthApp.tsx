@@ -25,7 +25,7 @@ export function AuthApp() {
     const gen = generation.current;
     // Keep the PKCE callback single-use even if React mounts effects twice.
     bootstrap.current ??= (async () => {
-      const auth = await createAuth0Client({ ...config, authorizationParams: { redirect_uri: window.location.origin } });
+      const auth = await createAuth0Client({ domain: config.domain, clientId: config.clientId, authorizationParams: { redirect_uri: window.location.origin, ...(config.audience ? { audience: config.audience } : {}) } });
       const params = new URLSearchParams(window.location.search);
       let accountType: AccountType | undefined;
       if (params.has('state') && (params.has('code') || params.has('error'))) {
@@ -62,7 +62,7 @@ export function AuthApp() {
     }
     setBusy(true);
     try {
-      const auth = client.current ?? await createAuth0Client({ ...config, authorizationParams: { redirect_uri: window.location.origin } });
+      const auth = client.current ?? await createAuth0Client({ domain: config.domain, clientId: config.clientId, authorizationParams: { redirect_uri: window.location.origin, ...(config.audience ? { audience: config.audience } : {}) } });
       client.current = auth;
       await auth.loginWithRedirect(accountType ? {
         appState: { casecoachAccountType: accountType },
@@ -93,6 +93,12 @@ export function AuthApp() {
   if (viewer) return <Suspense fallback={<p role="status">Opening your learning space…</p>}><ExperienceApp
     accountName={viewer.name}
     previewOnly={viewer.preview}
+    getAccessToken={viewer.preview ? undefined : async () => {
+      if (!client.current) throw new Error('Sign in is required.');
+      const token = await client.current.getTokenSilently({ detailedResponse: false });
+      if (typeof token !== 'string' || !token.trim()) throw new Error('An API access token is required.');
+      return token;
+    }}
     onExit={() => void exit()}
   /></Suspense>;
 

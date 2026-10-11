@@ -3,6 +3,8 @@ import {gunzipSync} from 'node:zlib';
 import {buildDemoCases, parseTable} from '../imports/mimicDemo.js';
 import {readFile, readdir} from 'node:fs/promises';
 import {join} from 'node:path';
+import { loadPatientProfile, PROFILE_DIRECTORY } from '../../app/profiles.js';
+import { profileToCase } from './profileCase.js';
 import {PatientCaseSchema, type PatientCase} from '@casecoach/shared';
 
 export interface PracticeCaseCard {
@@ -20,14 +22,19 @@ export class FileCaseRepository implements CaseRepository {
   private readonly generated = new Map<string, PatientCase>();
   private lastSourceId: string | undefined;
   private readonly directories: string[];
-  constructor(dir: string | string[], private readonly demoSource?: string) {this.directories=typeof dir === 'string' ? [dir] : dir;}
+  constructor(dir: string | string[], private readonly profilesDir = PROFILE_DIRECTORY, private readonly demoSource?: string) {this.directories=typeof dir === 'string' ? [dir] : dir;}
   async get(id: string): Promise<PatientCase | null> {
     if (!SAFE_ID.test(id)) return null;
     if (this.generated.has(id)) return this.generated.get(id)!;
     for (const dir of this.directories) {
       let raw: string;
       try {raw=await readFile(join(dir,`${id}.json`),'utf8');}
-      catch(err) {if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;throw err;}
+      catch(err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        try { raw=await readFile(join(dir,`${id}.simulation.json`),'utf8'); }
+        catch(e) {if ((e as NodeJS.ErrnoException).code === 'ENOENT') continue;throw e;}
+        return profileToCase(loadPatientProfile(id,this.profilesDir),JSON.parse(raw));
+      }
       const patient=PatientCaseSchema.parse(JSON.parse(raw));
       if (patient.id !== id) throw new Error('Case filename and id do not match');
       return patient;
@@ -61,7 +68,7 @@ export class FileCaseRepository implements CaseRepository {
     for(const dir of this.directories){
       let names:string[];
       try {names=await readdir(dir);}catch(err){if((err as NodeJS.ErrnoException).code==='ENOENT')continue;throw err;}
-      for(const name of names)if(name.endsWith('.json')&&SAFE_ID.test(name.slice(0,-5)))ids.add(name.slice(0,-5));
+      for(const name of names) { const id=name.endsWith('.simulation.json')?name.slice(0,-16):name.endsWith('.json')?name.slice(0,-5):''; if(SAFE_ID.test(id))ids.add(id); }
     }
     const cards:PracticeCaseCard[]=[];
     for(const id of ids){
